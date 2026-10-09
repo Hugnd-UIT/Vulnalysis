@@ -1,0 +1,2 @@
+helper() { :; }
+intra() { helper; }

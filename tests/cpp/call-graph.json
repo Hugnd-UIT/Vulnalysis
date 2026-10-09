@@ -1,0 +1,81 @@
+{
+  "nodes": [
+    {
+      "id": "f1",
+      "label": "f1.cpp",
+      "file_type": "code",
+      "source_file": "f1.cpp",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_helper",
+      "label": "helper()",
+      "file_type": "code",
+      "source_file": "f1.cpp",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_intra",
+      "label": "intra()",
+      "file_type": "code",
+      "source_file": "f1.cpp",
+      "source_location": "L2"
+    },
+    {
+      "id": "f2",
+      "label": "f2.cpp",
+      "file_type": "code",
+      "source_file": "f2.cpp",
+      "source_location": "L1"
+    },
+    {
+      "id": "f2_main",
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "f2.cpp",
+      "source_location": "L2"
+    }
+  ],
+  "edges": [
+    {
+      "source": "f1",
+      "target": "f1_helper",
+      "callee": "helper",
+      "relation": "contains",
+      "source_file": "f1.cpp",
+      "source_location": "L1"
+    },
+    {
+      "source": "f1",
+      "target": "f1_intra",
+      "callee": "intra",
+      "relation": "contains",
+      "source_file": "f1.cpp",
+      "source_location": "L2"
+    },
+    {
+      "source": "f1_intra",
+      "target": "f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f1.cpp",
+      "source_location": "L2"
+    },
+    {
+      "source": "f2",
+      "target": "f2_main",
+      "callee": "main",
+      "relation": "contains",
+      "source_file": "f2.cpp",
+      "source_location": "L2"
+    },
+    {
+      "source": "f2_main",
+      "target": "f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f2.cpp",
+      "source_location": "L2"
+    }
+  ]
+}

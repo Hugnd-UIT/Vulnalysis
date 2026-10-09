@@ -1,0 +1,3 @@
+def main
+  helper
+end

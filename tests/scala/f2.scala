@@ -1,0 +1,1 @@
+object F2 { def main(): Unit = helper() }

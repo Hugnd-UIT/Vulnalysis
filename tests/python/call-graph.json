@@ -1,0 +1,112 @@
+{
+  "nodes": [
+    {
+      "id": "f1",
+      "label": "f1.py",
+      "file_type": "module",
+      "source_file": "f1.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_py_f1_helper",
+      "label": "helper()",
+      "file_type": "function",
+      "source_file": "f1.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_intra",
+      "label": "intra()",
+      "file_type": "function",
+      "source_file": "f1.py",
+      "source_location": "L4"
+    },
+    {
+      "id": "f2",
+      "label": "f2.py",
+      "file_type": "module",
+      "source_file": "f2.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "f2_py_f1_helper",
+      "label": "f1.helper",
+      "file_type": "symbol",
+      "source_file": "f2.py",
+      "source_location": "L1"
+    },
+    {
+      "id": "f2_main",
+      "label": "main()",
+      "file_type": "function",
+      "source_file": "f2.py",
+      "source_location": "L3"
+    }
+  ],
+  "edges": [
+    {
+      "source": "f1",
+      "target": "f1_py_f1_helper",
+      "callee": "helper",
+      "relation": "contains",
+      "source_file": "f1.py",
+      "source_location": "L1"
+    },
+    {
+      "source": "f1",
+      "target": "f1_intra",
+      "callee": "intra",
+      "relation": "contains",
+      "source_file": "f1.py",
+      "source_location": "L4"
+    },
+    {
+      "source": "f1_intra",
+      "target": "f1_py_f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f1.py",
+      "source_location": "L5"
+    },
+    {
+      "source": "f2",
+      "target": "f2_py_f1_helper",
+      "callee": "helper",
+      "relation": "imports",
+      "source_file": "f2.py",
+      "source_location": "L1"
+    },
+    {
+      "source": "f2",
+      "target": "f2_main",
+      "callee": "main",
+      "relation": "contains",
+      "source_file": "f2.py",
+      "source_location": "L3"
+    },
+    {
+      "source": "f2_main",
+      "target": "f2_py_f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f2.py",
+      "source_location": "L4"
+    },
+    {
+      "source": "f2",
+      "target": "f2_py_f1_helper",
+      "callee": "helper",
+      "relation": "imports",
+      "source_file": "f2.py",
+      "source_location": "L1"
+    },
+    {
+      "source": "f2",
+      "target": "f2_py_f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f2.py",
+      "source_location": "L4"
+    }
+  ]
+}

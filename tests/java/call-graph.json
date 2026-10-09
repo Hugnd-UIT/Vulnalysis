@@ -1,0 +1,111 @@
+{
+  "nodes": [
+    {
+      "id": "f1",
+      "label": "f1.java",
+      "file_type": "code",
+      "source_file": "f1.java",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_f1",
+      "label": "F1",
+      "file_type": "code",
+      "source_file": "f1.java",
+      "source_location": "L1"
+    },
+    {
+      "id": "f1_f1_helper",
+      "label": ".helper()",
+      "file_type": "code",
+      "source_file": "f1.java",
+      "source_location": "L2"
+    },
+    {
+      "id": "f1_f1_intra",
+      "label": ".intra()",
+      "file_type": "code",
+      "source_file": "f1.java",
+      "source_location": "L3"
+    },
+    {
+      "id": "f2",
+      "label": "f2.java",
+      "file_type": "code",
+      "source_file": "f2.java",
+      "source_location": "L1"
+    },
+    {
+      "id": "f2_f2",
+      "label": "F2",
+      "file_type": "code",
+      "source_file": "f2.java",
+      "source_location": "L1"
+    },
+    {
+      "id": "f2_f2_main",
+      "label": ".main()",
+      "file_type": "code",
+      "source_file": "f2.java",
+      "source_location": "L2"
+    }
+  ],
+  "edges": [
+    {
+      "source": "f1",
+      "target": "f1_f1",
+      "callee": "f1",
+      "relation": "contains",
+      "source_file": "f1.java",
+      "source_location": "L1"
+    },
+    {
+      "source": "f1_f1",
+      "target": "f1_f1_helper",
+      "callee": "helper",
+      "relation": "method",
+      "source_file": "f1.java",
+      "source_location": "L2"
+    },
+    {
+      "source": "f1_f1",
+      "target": "f1_f1_intra",
+      "callee": "intra",
+      "relation": "method",
+      "source_file": "f1.java",
+      "source_location": "L3"
+    },
+    {
+      "source": "f1_f1_intra",
+      "target": "f1_f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f1.java",
+      "source_location": "L3"
+    },
+    {
+      "source": "f2",
+      "target": "f2_f2",
+      "callee": "f2",
+      "relation": "contains",
+      "source_file": "f2.java",
+      "source_location": "L1"
+    },
+    {
+      "source": "f2_f2",
+      "target": "f2_f2_main",
+      "callee": "main",
+      "relation": "method",
+      "source_file": "f2.java",
+      "source_location": "L2"
+    },
+    {
+      "source": "f2_f2_main",
+      "target": "f1_f1_helper",
+      "callee": "helper",
+      "relation": "calls",
+      "source_file": "f2.java",
+      "source_location": "L2"
+    }
+  ]
+}
