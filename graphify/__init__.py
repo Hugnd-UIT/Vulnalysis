@@ -58,7 +58,7 @@ def callgraph(target: str | Path, output: str | Path | None = None) -> dict:
     if loc.is_file():
         files = [loc]
     elif loc.is_dir():
-        files = collect(loc)
+        files = [p for p in collect(loc) if p.suffix.lower() not in ('.md', '.mdx', '.qmd', '.txt', '.rst', '.json')]
     else:
         raise FileNotFoundError(f'Target path not found: {loc}')
 

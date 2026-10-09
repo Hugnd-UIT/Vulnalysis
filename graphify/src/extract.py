@@ -5969,13 +5969,13 @@ def collect(target: Path, *, follow_symlinks: bool=False, root: Path | None=None
         return [target] if resolves(target, containment_root) else []
 
     _EXTENSIONS = set(_DISPATCH.keys())
-    from graphify.detect import ignored, installed, noise, ignore
+    from graphify.detect import ignored as isignored, installed, noise, ignore
     ignore_root = root if root is not None else target
     patterns = ignore(ignore_root)
     ignore_cache: dict[Path, bool] = {}
 
-    def ignored(p: Path) -> bool:
-        return bool(patterns and ignored(p, ignore_root, patterns, _cache=ignore_cache))
+    def skipped(p: Path) -> bool:
+        return bool(patterns and isignored(p, ignore_root, patterns, _cache=ignore_cache))
 
     if not follow_symlinks:
         if any((noise(part) for part in target.parts)):
@@ -5986,13 +5986,13 @@ def collect(target: Path, *, follow_symlinks: bool=False, root: Path | None=None
 
         for dirpath, dirnames, filenames in os.walk(target):
             dp = Path(dirpath)
-            dirnames[:] = [d for d in dirnames if not noise(d, dp) and (has_negation or not ignored(dp / d))]
+            dirnames[:] = [d for d in dirnames if not noise(d, dp) and (has_negation or not skipped(dp / d))]
 
             for fname in filenames:
                 p = dp / fname
                 suffix = p.suffix
 
-                if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and (not ignored(p)) and (not installed(p)) and resolves(p, containment_root):
+                if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and (not skipped(p)) and (not installed(p)) and resolves(p, containment_root):
                     results.append(p)
 
         return sorted(results)
@@ -6015,10 +6015,10 @@ def collect(target: Path, *, follow_symlinks: bool=False, root: Path | None=None
             p = dp / fname
             suffix = p.suffix
 
-            if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and (not ignored(p)) and (not installed(p)) and resolves(p, containment_root):
+            if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and (not skipped(p)) and (not installed(p)) and resolves(p, containment_root):
                 results.append(p)
 
-    return sorted(results)
+        return sorted(results)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:

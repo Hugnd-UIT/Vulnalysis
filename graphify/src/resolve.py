@@ -2178,12 +2178,12 @@ def resolvepyns(module_name: str, current_path: Path, root: Path, level: int) ->
         stripped = module_name[len(ns) + 1:] if module_name != ns else ''
 
         if stripped:
-            hit = _namespace(root / stripped.replace('.', '/'))
+            hit = namespace(root / stripped.replace('.', '/'))
 
             if hit is not None:
                 return hit
         else:
-            hit = _namespace(root)
+            hit = namespace(root)
 
             if hit is not None:
                 return hit
@@ -2197,7 +2197,7 @@ def resolvepyns(module_name: str, current_path: Path, root: Path, level: int) ->
         if anc == root or (anc / '__init__.py').is_file():
             continue
 
-        hit = _namespace(anc / rel)
+        hit = namespace(anc / rel)
 
         if hit is not None:
             return hit
