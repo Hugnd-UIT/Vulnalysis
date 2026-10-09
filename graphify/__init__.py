@@ -75,9 +75,9 @@ def callgraph(target: str | Path, output: str | Path | None = None) -> dict:
             nodes.append({
                 'id': nid,
                 'label': n.get('label', ''),
-                'file_type': n.get('file_type', 'code'),
-                'source_file': n.get('source_file', ''),
-                'source_location': n.get('source_location', ''),
+                'type': n.get('file_type', n.get('type', 'code')),
+                'file': n.get('source_file', n.get('file', '')),
+                'lines': n.get('source_location', n.get('lines', '')),
             })
 
     for e in res.get('edges', []):
@@ -90,8 +90,8 @@ def callgraph(target: str | Path, output: str | Path | None = None) -> dict:
                 'target': tgt,
                 'callee': e.get('callee') or tgt.split('_')[-1],
                 'relation': e.get('relation', 'calls'),
-                'source_file': e.get('source_file', ''),
-                'source_location': e.get('source_location', ''),
+                'file': e.get('source_file', e.get('file', '')),
+                'lines': e.get('source_location', e.get('lines', '')),
             })
 
     result = {'nodes': nodes, 'edges': edges}

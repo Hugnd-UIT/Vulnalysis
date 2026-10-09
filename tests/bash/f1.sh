@@ -1,2 +1,0 @@
-helper() { :; }
-intra() { helper; }
