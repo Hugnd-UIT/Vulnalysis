@@ -1,0 +1,34 @@
+provider:
+  url:
+  key:
+
+agents:
+  vuln-planner:
+    model:
+    input-rate:
+    output-rate:
+
+  vuln-analyzer:
+    model:
+    input-rate:
+    output-rate:
+
+  repo-builder:
+    model:
+    input-rate:
+    output-rate:
+
+  repo-retriever:
+    model:
+    input-rate:
+    output-rate:
+
+  pov-generator:
+    model:
+    input-rate:
+    output-rate:
+
+  pov-verifier:
+    model:
+    input-rate:
+    output-rate:

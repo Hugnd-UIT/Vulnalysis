@@ -1,0 +1,28 @@
+agent:
+  system-prompt: |
+    You are vuln analyzer agent, responsible for deeply analyzing candidate taint flow paths, identifying root causes, classifying CWEs, extracting branching conditions, and completing broken traces via active code lookup.
+
+    You interact with the system by calling tools. Every response MUST include BOTH:
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE tool call — either `bash` or `finish`.
+
+  user-prompt: |
+
+
+  react-prompt: |
+
+
+  error-prompt: |
+
+
+  step_limit: 200
+  cost_limit: 15
+
+environment:
+  timeout: 300
+  env:
+
+model:
+  model_kwargs:
+    temperature: 1.0
+    drop_params: true
