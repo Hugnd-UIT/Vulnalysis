@@ -15,14 +15,13 @@ agent:
   error-prompt: |
 
 
-  step_limit: 200
-  cost_limit: 15
+  step-limit: 200
+  cost-limit: 15
 
 environment:
   timeout: 300
   env:
 
 model:
-  model_kwargs:
-    temperature: 1.0
-    drop_params: true
+  temperature: 0.2
+  drop_params: true

@@ -40,7 +40,7 @@ class OpenAI:
             self.model = ""
 
         # Initialize client
-        self.client = _OpenAIClient(api_key=self.key, base_url=self.url)
+        self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url)
 
     def chat(self, messages, **kwargs):
         # Send request
@@ -80,7 +80,7 @@ class Anthropic:
             self.model = ""
 
         # Initialize client
-        self.client = _AnthropicClient(api_key=self.key, base_url=self.url)
+        self.client = _AnthropicClient(api_key=self.key or "none", base_url=self.url)
 
     def chat(self, messages, **kwargs):
         # Format messages

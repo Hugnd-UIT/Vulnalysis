@@ -6,5 +6,7 @@ builder = importlib.import_module(".repo-builder", package=__name__)
 analyzer = importlib.import_module(".vuln-analyzer", package=__name__)
 generator = importlib.import_module(".pov-generator", package=__name__)
 verifier = importlib.import_module(".pov-verifier", package=__name__)
+base = importlib.import_module(".base", package=__name__)
+BaseAgent = base.BaseAgent
 
-__all__ = ["planner", "retriever", "builder", "analyzer", "generator", "verifier"]
+__all__ = ["base", "BaseAgent", "planner", "retriever", "builder", "analyzer", "generator", "verifier"]

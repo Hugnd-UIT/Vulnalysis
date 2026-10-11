@@ -15,8 +15,8 @@ agent:
   error-prompt: |
 
 
-  step_limit: 200
-  cost_limit: 15
+  step-limit: 200
+  cost-limit: 15
 
 environment:
   timeout: 300
