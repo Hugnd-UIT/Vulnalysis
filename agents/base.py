@@ -42,6 +42,19 @@ class BaseAgent:
                 return yaml.safe_load(f) or {}
         return {}
 
+    # Render prompt
+    def render(self, template, **kwargs):
+        if not template:
+            return ""
+        try:
+            from jinja2 import Template
+            return Template(template).render(**kwargs)
+        except Exception:
+            text = template
+            for k, v in kwargs.items():
+                text = text.replace(f"{{{{{k}}}}}", str(v))
+            return text
+
     # Check limits
     def is_step_exceeded(self):
         return self.step >= self.step_limit
