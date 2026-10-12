@@ -58,9 +58,10 @@ class RepoRetrieverAgent(BaseAgent):
 
     # Load call graph
     def load_graph(self, repo_path, graph_path=None):
-        # Load from path
-        if graph_path and Path(graph_path).exists():
-            with open(graph_path, "r", encoding="utf-8") as f:
+        
+        path = Path(graph_path) if graph_path else Path("outputs/call-graph.json")
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
 
         try:

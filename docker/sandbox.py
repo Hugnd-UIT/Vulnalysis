@@ -2,15 +2,38 @@ import os
 import time
 import docker
 
-def init():
+from pathlib import Path
+
+
+def init(repo_path=None, outputs_path="outputs"):
 	client = docker.from_env()
 
 	sandbox_name = "kali-linux"
+
+	volumes = {}
+	if outputs_path:
+		out_dir = Path(outputs_path).resolve()
+		out_dir.mkdir(parents=True, exist_ok=True)
+		volumes[str(out_dir)] = {'bind': '/outputs', 'mode': 'rw'}
+	if repo_path:
+		repo_dir = Path(repo_path).resolve()
+		if repo_dir.exists():
+			volumes[str(repo_dir)] = {'bind': '/data', 'mode': 'rw'}
+
 	found = client.containers.list(filters={'name': sandbox_name}, all=True)
 
 	if found:
 		container = found[0]
-	else:
+		binds = container.attrs.get('HostConfig', {}).get('Binds') or []
+		if volumes and not binds:
+			try:
+				container.stop()
+			except Exception:
+				pass
+			container.remove()
+			found = []
+
+	if not found:
 		# Check or build image
 		image = "vulnalysis:latest"
 		try:
@@ -32,6 +55,7 @@ def init():
 			cap_add=['NET_ADMIN', 'SYS_PTRACE'],
 			devices=["/dev/net/tun"],
 			environment={"DEBIAN_FRONTEND": "noninteractive"},
+			volumes=volumes,
 			stdin_open=True
 		)
 
