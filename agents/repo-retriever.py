@@ -93,7 +93,7 @@ class RepoRetrieverAgent(BaseAgent):
 
         return []
 
-    # Run retrieval
+    # Run repo retriever
     def run(self, repo_path, graph_path=None):
         # Reset memory
         self.memory.clear()
@@ -152,7 +152,6 @@ class RepoRetrieverAgent(BaseAgent):
                 # Error
                 messages.append({"role": "user", "content": self.error_prompt})
 
-        # Extract final flows
         last_text = messages[-1]["content"] if messages else ""
         return self.extract(last_text)
 

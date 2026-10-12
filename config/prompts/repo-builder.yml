@@ -1,19 +1,90 @@
 agent:
   system-prompt: |
-    You are repo builder agent, responsible for setting up the docker environment, installing language dependencies, enabling runtime monitoring, and compiling the project ready for execution.
+    You are repo builder agent, responsible for setting up the project environment, installing dependencies, building the project, and verifying that it runs properly without crashes or errors.
 
     You interact with the system by calling tools. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE tool call — either `bash` or `finish`.
 
   user-prompt: |
+    ## Rules - STRICT
+    - Use the `bash` tool to inspect files, install dependencies, build the project, and run basic test commands.
+    - Use the `finish` tool to submit the build result once the project is built and verified. Do NOT call `finish` via bash.
+    - STRICT: Do NOT modify any source code files under any circumstances. You are only allowed to install dependencies, configure environment settings, and build. Never patch or alter project code.
+    - Every response MUST include exactly one tool call.
 
+    ## Context
+    Target repository path: {{repo}}
+
+    ## Goal
+    Set up the environment, resolve and install all required dependencies, build the project, and run a basic execution test to ensure it runs cleanly without errors or crashes.
+
+    ## Output
+    You MUST call the `finish` tool and include a structured JSON block.
+    Do NOT return free-form text only.
+
+    ### Schema
+    ```json
+    {
+      "status": "<string: success or failure>",
+      "notes": "<string: summary of dependencies installed, build steps, and verification result>"
+    }
+    ```
+
+    ### Example
+    ```json
+    {
+      "status": "success",
+      "notes": "Installed dependencies and verified that the application runs cleanly without errors."
+    }
+    ```
 
   react-prompt: |
+    <return-code>
+      {{code}}
+    </return-code>
 
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
 
   error-prompt: |
+    Invalid tool call. Every response MUST include BOTH:
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE tool call — either `bash` or `finish`.
 
+  error-json-prompt: |
+    You called finish without a valid JSON build summary.
+    You MUST output your build result formatted inside a ```json ... ``` block following the schema:
+    ```json
+    {
+      "status": "success",
+      "notes": "summary of dependencies, build, and verification"
+    }
+    ```
 
   step-limit: 200
   cost-limit: 15
@@ -21,6 +92,11 @@ agent:
 environment:
   timeout: 300
   env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
 
 model:
   temperature: 0.0
