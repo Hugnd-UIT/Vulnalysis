@@ -20,7 +20,6 @@ class RepoRetrieverAgent(BaseAgent):
     def scan(self, repo_path):
         target = Path(repo_path).resolve()
 
-        # Collect via graphify
         try:
             from graphify.extract import collect
             non_code = {".md", ".mdx", ".qmd", ".skill", ".json", ".txt", ".rst"}
@@ -32,7 +31,6 @@ class RepoRetrieverAgent(BaseAgent):
         except Exception:
             pass
 
-        # Walk directory
         files = []
         ignored = {
             ".git", "__pycache__", "venv", ".venv",
@@ -65,68 +63,35 @@ class RepoRetrieverAgent(BaseAgent):
             with open(graph_path, "r", encoding="utf-8") as f:
                 return json.load(f)
 
-        # Generate via graphify
         try:
             import graphify
             return graphify.callgraph(repo_path)
         except Exception:
             return {"nodes": [], "edges": []}
 
-    # Extract taint flows
+    # Extract response
     def extract(self, text):
-        flows = []
         if not text:
-            return flows
+            return []
+
+        if "```json" in text:
+            json_str = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            json_str = text.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = text.strip()
 
         try:
             import json_repair
-
-            # Try code blocks first
-            blocks = re.findall(r"```(?:json)?\s*([\[\{].*?[\]\}])\s*```", text, re.DOTALL)
-            for b in blocks:
-                try:
-                    data = json_repair.loads(b)
-                    if isinstance(data, list):
-                        flows.extend(data)
-                    elif isinstance(data, dict):
-                        if "taint_flows" in data and isinstance(data["taint_flows"], list):
-                            flows.extend(data["taint_flows"])
-                        elif "candidates" in data and isinstance(data["candidates"], list):
-                            flows.extend(data["candidates"])
-                        else:
-                            flows.append(data)
-                except Exception:
-                    pass
-
-            # Try full text if no blocks matched
-            if not flows:
-                data = json_repair.loads(text)
-                if isinstance(data, list):
-                    flows.extend(data)
-                elif isinstance(data, dict):
-                    if "taint_flows" in data and isinstance(data["taint_flows"], list):
-                        flows.extend(data["taint_flows"])
-                    elif "candidates" in data and isinstance(data["candidates"], list):
-                        flows.extend(data["candidates"])
-                    elif data:
-                        flows.append(data)
+            data = json_repair.loads(json_str)
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                return [data]
         except Exception:
             pass
 
-        # Fallback standard json
-        if not flows:
-            blocks = re.findall(r"```(?:json)?\s*([\[\{].*?[\]\}])\s*```", text, re.DOTALL)
-            for b in blocks:
-                try:
-                    data = json.loads(b)
-                    if isinstance(data, list):
-                        flows.extend(data)
-                    elif isinstance(data, dict):
-                        flows.append(data)
-                except Exception:
-                    pass
-
-        return flows
+        return []
 
     # Run retrieval
     def run(self, repo_path, graph_path=None):
@@ -134,13 +99,12 @@ class RepoRetrieverAgent(BaseAgent):
         self.memory.clear()
         self.step = 0
 
-        # Collect codebase info
         files = self.scan(repo_path)
         graph = self.load_graph(repo_path, graph_path)
         nodes_count = len(graph.get("nodes", []))
         edges_count = len(graph.get("edges", []))
 
-        # Build initial prompt
+        # Build prompt
         initial_task = self.render(
             self.user_prompt,
             repo=str(repo_path),
@@ -155,47 +119,38 @@ class RepoRetrieverAgent(BaseAgent):
             {"role": "user", "content": initial_task},
         ]
 
-        # Start ReAct loop
+        # ReAct loop
         while not self.is_step_exceeded() and not self.is_cost_exceeded():
             # Call llm
             reply = self.call(messages)
             thought, action, command = self.parse(reply)
 
-            # Record thought
+            # Thought
             messages.append({"role": "assistant", "content": reply})
 
-            # Check finish
+            # Finish
             if action == "finish" or (not action and "finish" in reply.lower()):
                 flows = self.extract(reply)
                 if flows:
                     self.log(thought=thought, action="finish", observation="Retrieval completed")
                     return flows
 
-                # Enforce valid json
-                err_text = self.render(
-                    self.error_prompt,
-                    error="You called finish without a valid JSON payload. Output your taint flows inside a ```json ... ``` block.",
-                )
-                messages.append({"role": "user", "content": err_text})
+                messages.append({"role": "user", "content": self.error_json_prompt})
                 continue
 
-            # Execute bash
+            # Execute
             if action == "bash" and command:
                 code, output = self.execute(command)
 
-                # Log step
+                # Log
                 self.log(thought=thought, action="bash", command=command, observation=output[:500])
 
-                # Feed observation
+                # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
                 messages.append({"role": "user", "content": obs_text})
             else:
-                # Handle error
-                err_text = self.render(
-                    self.error_prompt,
-                    error="Invalid tool call. Must be bash or finish.",
-                )
-                messages.append({"role": "user", "content": err_text})
+                # Error
+                messages.append({"role": "user", "content": self.error_prompt})
 
         # Extract final flows
         last_text = messages[-1]["content"] if messages else ""

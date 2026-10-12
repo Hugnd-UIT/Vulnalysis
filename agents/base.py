@@ -26,6 +26,7 @@ class BaseAgent:
         self.user_prompt = agent_cfg.get("user-prompt", "")
         self.react_prompt = agent_cfg.get("react-prompt", "")
         self.error_prompt = agent_cfg.get("error-prompt", "")
+        self.error_json_prompt = agent_cfg.get("error-json-prompt", "")
         self.step_limit = int(agent_cfg.get("step-limit", 200))
         self.cost_limit = float(agent_cfg.get("cost-limit", 15.0))
         self.timeout = int(env_cfg.get("timeout", 300))

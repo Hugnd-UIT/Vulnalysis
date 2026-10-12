@@ -150,13 +150,13 @@ agent:
     {%- endif -%}
 
   error-prompt: |
-    Your last response did not include a valid tool call or encountered an error:
-
-    {{error}}
-
-    Every response MUST include BOTH:
+    Invalid tool call. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE tool call — either `bash` or `finish`.
+
+  error-json-prompt: |
+    You called finish without a valid JSON array of taint flows.
+    You MUST output your taint flows formatted inside a ```json ... ``` block following the schema.
 
   step-limit: 200
   cost-limit: 15
