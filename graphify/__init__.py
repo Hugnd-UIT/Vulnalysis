@@ -14,7 +14,7 @@ if root not in sys.path:
 src = str(Path(__file__).resolve().parent / 'src')
 
 if src not in sys.path:
-    sys.path.insert(0, src)
+    sys.path.append(src)
 
 if '__path__' in globals():
     __path__.append(src)

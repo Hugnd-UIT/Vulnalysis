@@ -70,30 +70,6 @@ class RepoRetrieverAgent(BaseAgent):
         except Exception:
             return {"nodes": [], "edges": []}
 
-    # Extract response
-    def extract(self, text):
-        if not text:
-            return []
-
-        if "```json" in text:
-            json_str = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            json_str = text.split("```")[1].split("```")[0].strip()
-        else:
-            json_str = text.strip()
-
-        try:
-            import json_repair
-            data = json_repair.loads(json_str)
-            if isinstance(data, list):
-                return data
-            if isinstance(data, dict):
-                return [data]
-        except Exception:
-            pass
-
-        return []
-
     # Run repo retriever
     def run(self, repo_path, graph_path=None):
         # Reset memory
@@ -131,13 +107,8 @@ class RepoRetrieverAgent(BaseAgent):
 
             # Finish
             if action == "finish" or (not action and "finish" in reply.lower()):
-                flows = self.extract(reply)
-                if flows:
-                    self.log(thought=thought, action="finish", observation="Retrieval completed")
-                    return flows
-
-                messages.append({"role": "user", "content": self.error_json_prompt})
-                continue
+                self.log(thought=thought, action="finish", observation="Retrieval completed")
+                return
 
             # Execute
             if action == "bash" and command:
@@ -152,9 +123,6 @@ class RepoRetrieverAgent(BaseAgent):
             else:
                 # Error
                 messages.append({"role": "user", "content": self.error_prompt})
-
-        last_text = messages[-1]["content"] if messages else ""
-        return self.extract(last_text)
 
 
 __all__ = ["RepoRetrieverAgent"]

@@ -1,8 +1,17 @@
 import os
+import sys
 import time
-import docker
-
 from pathlib import Path
+
+if "docker" in sys.modules and not hasattr(sys.modules["docker"], "from_env"):
+	del sys.modules["docker"]
+
+if sys.path and sys.path[0] in ("", ".", os.getcwd()):
+	_cwd = sys.path.pop(0)
+	import docker
+	sys.path.insert(0, _cwd)
+else:
+	import docker
 
 
 def init(repo_path=None, outputs_path="outputs"):
@@ -25,7 +34,8 @@ def init(repo_path=None, outputs_path="outputs"):
 	if found:
 		container = found[0]
 		binds = container.attrs.get('HostConfig', {}).get('Binds') or []
-		if volumes and not binds:
+		has_all = all(any(v['bind'] in b for b in binds) for v in volumes.values())
+		if volumes and not has_all:
 			try:
 				container.stop()
 			except Exception:

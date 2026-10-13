@@ -40,7 +40,7 @@ class OpenAI:
             self.model = ""
 
         # Initialize client
-        self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url)
+        self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url, timeout=60.0)
 
     def chat(self, messages, **kwargs):
         # Send request
@@ -49,7 +49,11 @@ class OpenAI:
             messages=messages,
             **kwargs
         )
-        return response.choices[0].message.content or ""
+        msg = response.choices[0].message
+        content = msg.content or ""
+        if not content and hasattr(msg, "reasoning_content") and msg.reasoning_content:
+            content = msg.reasoning_content
+        return content
 
     def __call__(self, messages, **kwargs):
         return self.chat(messages, **kwargs)

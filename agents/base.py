@@ -71,7 +71,7 @@ class BaseAgent:
         # Run command in sandbox
         t = timeout or self.timeout
         try:
-            cmd = f"/bin/bash -c {command!r}"
+            cmd = ["/bin/bash", "-c", command]
             res = self.sandbox.exec_run(cmd, stdout=True, stderr=True)
             output = res.output.decode("utf-8", errors="ignore") if isinstance(res.output, bytes) else str(res.output or "")
             return res.exit_code, output

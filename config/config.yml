@@ -1,6 +1,6 @@
 provider:
-  url:
-  key:
+  url: http://localhost:20128/v1
+  key: sk-7412ef646295bcc4-8xzjam-751992f4
 
 agents:
   vuln-planner:
@@ -19,7 +19,7 @@ agents:
     output-rate:
 
   repo-retriever:
-    model:
+    model: ag/gemini-3.8-flash-low
     input-rate:
     output-rate:
 

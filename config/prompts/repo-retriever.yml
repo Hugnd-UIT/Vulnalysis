@@ -2,16 +2,18 @@ agent:
   system-prompt: |
     You are repo retriever agent, responsible for exploring the codebase to extract complete taint flows from untrusted sources through transforms to critical sinks guided by the pre-generated call graph.
 
-    You interact with the system by calling tools. Every response MUST include BOTH:
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE tool call — either `bash` or `finish`.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   user-prompt: |
     ## Rules - STRICT
-    - Use the `bash` tool to inspect the codebase like `grep`, `find`, `cat`, `head`, `tail`, `sed`, and to append discovered taint flows directly into `/outputs/taint-flow.jsonl`.
-    - Use the `finish` tool to conclude once you have written all taint flows to `/outputs/taint-flow.jsonl`. Do NOT call `finish` via bash.
+    - Use `bash` to inspect `/outputs/call-graph.json`, inspect targeted functions along call chains, and append discovered taint flows directly into `/outputs/taint-flow.jsonl`.
+    - MANDATORY Incremental Append: As soon as you inspect a function and trace tainted input through it, IMMEDIATELY append all discovered taint flows for that function into `/outputs/taint-flow.jsonl` via bash. Do NOT accumulate flows in memory to write at the end.
+    - Output `finish` ONLY when all call chains and reachable functions in the call graph have been fully inspected and recorded. Do NOT call `finish` via bash.
     - Do NOT generate PoVs, do NOT compile the target, and do NOT attempt to prove crashes in this stage. Your sole responsibility is extracting taint flows.
-    - Every response MUST include exactly one tool call.
+    - Every response MUST include exactly one action.
+    - Strictly Call-Graph Guided: Use `/outputs/call-graph.json` as your navigation map. Only inspect the functions and call chains mapped in the call graph.
 
     ## Overview
     The software project is located at: {{repo}}
@@ -22,25 +24,29 @@ agent:
     {{samples}}
 
     ## Goal
-    Explore the codebase to identify complete taint flows connecting untrusted input entry points (sources) through intermediate processing logic (transforms) to sensitive operations (sinks).
+    Use the pre-generated call graph as context to systematically trace and extract all complete taint flows from external input entry points (sources) along call chains to sensitive operations (sinks).
 
     ## Recommended workflow
-    1. Identify untrusted input sources: Locate where external, untrusted input enters the application such as CLI arguments, network sockets, file reads, deserialization, HTTP request parsers, or environment variables.
-    2. Identify sensitive sinks: Search for security-sensitive operations such as buffer copies `memcpy`/`strcpy`, memory allocation with arithmetic, command execution `system`/`exec`, array indexing, or pointer arithmetic.
-    3. Trace transforms via call graph: Use the call graph and code searches to trace the complete propagation path between source and sink across functions whether within the same file or across multiple files. Identify all intermediary functions such as sanitizers, decoders, filters, wrappers, and type casts.
-    4. Package and record: Verify each taint flow path against the actual source code, ensure every field references verified code in the repository, and append the flow into `/outputs/taint-flow.jsonl`.
-    5. Conclude: Once all candidate paths have been mapped, call the `finish` tool.
+    1. Extract call chains: Query /outputs/call-graph.json to get the list of entry point functions (e.g. main, network listeners, fuzzer harnesses) and their reachable call chains (calls edges).
+    2. Traverse and inspect: Follow each call chain function by function using the file and line information from the call graph. Skip files that are identical duplicates of previously analyzed files.
+    3. Grouped sink extraction: In each function reached by tainted data, thoroughly examine the code body. Identify all sensitive operations (allocations, copies, indexing, resource handling) and group related operations on the same buffer/resource into cohesive logical flows.
+    4. Write immediately: Append each batch of discovered flows for the current function directly into /outputs/taint-flow.jsonl before proceeding to the next function.
+    5. Conclude: Only call inish after all unique call chains and functions from the call graph have been evaluated and recorded.
 
     ## Scope - STRICT
-    - Data flow tracing and exploration only: read source files, search symbols, inspect call chains, and trace data flow from sources to sinks.
+    - Call-graph driven exploration: Navigate strictly along call paths defined in `/outputs/call-graph.json`. Do not wander into unrelated files.
+    - Identical Duplicate Files: If a target file or harness is an identical duplicate of a file you already thoroughly analyzed (e.g. identical code in different directories), do NOT duplicate the entire batch of flows. Skip identical file clones to prevent redundant analysis.
+    - Logical Sink Clustering: Group related operations on the same target buffer/resource into ONE cohesive taint flow (e.g. group adjacent read and write on `buff[index]` into a single "Out-of-bounds access on buff" flow). Do NOT split every single line into separate fragmented flows.
+    - Accurate Executable Line Numbers: The sink.line MUST point directly to the actual executable statement performing the sensitive operation (e.g. allocation, copy, arithmetic, indexing, call). NEVER point to control block delimiters ({, }, else, endif), blank lines, or comments.
+    - Data flow tracing only: locate sources, trace transforms along the call chain, and identify affected sensitive operations.
     - No vulnerability analysis or exploitation: Do not attempt to confirm exploitability, classify CWEs, or generate PoVs. Detailed vulnerability analysis will be handled by downstream analyzers.
     - Do NOT emit placeholder strings like 'path/to/...'. Every file path, function name, and line number MUST exist in the target project.
     - If a specific field cannot be determined with certainty, provide null rather than fabricating dummy values so missing information can be detected.
 
     ## Output
-    Write your discovered taint flows into `/outputs/taint-flow.jsonl` using the `bash` tool like `cat << 'EOF' >> /outputs/taint-flow.jsonl`.
-    Each taint flow is recorded as a single JSON object per line. You can append flows incrementally as you find them.
-    Once all flows are recorded (or if no taint flows are found), call the `finish` tool.
+    Write your discovered taint flows into `/outputs/taint-flow.jsonl` incrementally using bash like `cat << 'EOF' >> /outputs/taint-flow.jsonl`.
+    Each taint flow is recorded as a single JSON object per line.
+    Only call the `finish` tool once ALL call chains and functions from the call graph have been completely audited and all flows recorded.
 
     ### Schema
 
@@ -137,13 +143,9 @@ agent:
     {%- endif -%}
 
   error-prompt: |
-    Invalid tool call. Every response MUST include BOTH:
+    Invalid action format. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE tool call — either `bash` or `finish`.
-
-  error-json-prompt: |
-    No taint flows were found in /outputs/taint-flow.jsonl.
-    Ensure you write your discovered taint flows into /outputs/taint-flow.jsonl using bash before calling finish.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   step-limit: 200
   cost-limit: 15
