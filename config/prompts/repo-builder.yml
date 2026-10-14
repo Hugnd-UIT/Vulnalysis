@@ -8,11 +8,10 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Every response MUST include BOTH a THOUGHT section and exactly ONE action, either `bash` or `finish`.
     - Use `bash` to inspect build instructions, install dependencies, compile the project, and test normal execution.
+    - Use `finish` ONLY when the project has been built and verified runnable without crashing. Do NOT call `finish` via bash.
     - Focus strictly on making the target runnable; do not force complex flags or unrelated tools if they cause build failures.
     - Minimize modifying source code; only adjust build scripts, configurations, or packages if necessary to make the project build.
-    - Use `finish` ONLY when the project has been built and verified runnable without crashing. Do NOT call `finish` via bash.
 
     ## Context
     - Target repository: {{repo}}
@@ -27,7 +26,7 @@ agent:
     ## Scope - STRICT
     - Source code preservation: Do not modify application source code unless strictly necessary to resolve a build blocker.
     - Pragmatic build goal: Priority is getting the application to run; do not waste steps on optional tooling.
-    - Clean execution: Confirm the application runs with normal options like --help or valid inputs before concluding.
+    - Clean execution: Confirm the application runs with normal options or valid inputs before concluding.
 
   react-prompt: |
     <return-code>
