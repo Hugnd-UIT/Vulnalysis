@@ -78,16 +78,18 @@ class RepoRetrieverAgent(BaseAgent):
 
         files = self.scan(repo_path)
         graph = self.load_graph(repo_path, graph_path)
-        nodes_count = len(graph.get("nodes", []))
-        edges_count = len(graph.get("edges", []))
+        flows_path = Path("outputs/call-flows.jsonl")
+        flows_count = 0
+        if flows_path.exists():
+            with open(flows_path, "r", encoding="utf-8") as f:
+                flows_count = sum(1 for line in f if line.strip())
 
         # Build prompt
         initial_task = self.render(
             self.user_prompt,
             repo=str(repo_path),
             files=len(files),
-            nodes=nodes_count,
-            edges=edges_count,
+            flows=flows_count,
             samples="\n".join(files[:20]),
         )
 
