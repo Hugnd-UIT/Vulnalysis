@@ -78,10 +78,13 @@ class RepoRetrieverAgent(BaseAgent):
 
         files = self.scan(repo_path)
         graph = self.load_graph(repo_path, graph_path)
+        nodes_count = len(graph.get("nodes", []))
+        edges_count = len(graph.get("edges", []))
+        call_graph_file = graph_path or "/outputs/call-graph.json"
         call_flows_file = flows_path or "/outputs/call-flows.jsonl"
         taint_flows_file = taint_path or "/outputs/taint-flows.jsonl"
 
-        local_flows = Path(flows_path) if flows_path else Path("outputs/call-flows.jsonl")
+        local_flows = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
         flows_count = 0
         if local_flows.exists():
             with open(local_flows, "r", encoding="utf-8") as f:
@@ -92,6 +95,9 @@ class RepoRetrieverAgent(BaseAgent):
             self.user_prompt,
             repo=str(repo_path),
             files=len(files),
+            nodes=nodes_count,
+            edges=edges_count,
+            call_graph=str(call_graph_file),
             flows=flows_count,
             call_flows=str(call_flows_file),
             taint_flows=str(taint_flows_file),
@@ -115,7 +121,7 @@ class RepoRetrieverAgent(BaseAgent):
             # Finish
             if action == "finish" or (not action and "finish" in reply.lower()):
                 self.log(thought=thought, action="finish", observation="Retrieval completed")
-                return
+                return taint_flows_file
 
             # Execute
             if action == "bash" and command:
@@ -130,6 +136,8 @@ class RepoRetrieverAgent(BaseAgent):
             else:
                 # Error
                 messages.append({"role": "user", "content": self.error_prompt})
+
+        return taint_flows_file
 
 
 __all__ = ["RepoRetrieverAgent"]
