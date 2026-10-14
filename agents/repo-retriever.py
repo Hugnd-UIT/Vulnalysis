@@ -71,17 +71,20 @@ class RepoRetrieverAgent(BaseAgent):
             return {"nodes": [], "edges": []}
 
     # Run repo retriever
-    def run(self, repo_path, graph_path=None):
+    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None):
         # Reset memory
         self.memory.clear()
         self.step = 0
 
         files = self.scan(repo_path)
         graph = self.load_graph(repo_path, graph_path)
-        flows_path = Path("outputs/call-flows.jsonl")
+        call_flows_file = flows_path or "/outputs/call-flows.jsonl"
+        taint_flows_file = taint_path or "/outputs/taint-flows.jsonl"
+
+        local_flows = Path(flows_path) if flows_path else Path("outputs/call-flows.jsonl")
         flows_count = 0
-        if flows_path.exists():
-            with open(flows_path, "r", encoding="utf-8") as f:
+        if local_flows.exists():
+            with open(local_flows, "r", encoding="utf-8") as f:
                 flows_count = sum(1 for line in f if line.strip())
 
         # Build prompt
@@ -90,6 +93,8 @@ class RepoRetrieverAgent(BaseAgent):
             repo=str(repo_path),
             files=len(files),
             flows=flows_count,
+            call_flows=str(call_flows_file),
+            taint_flows=str(taint_flows_file),
             samples="\n".join(files[:20]),
         )
 
