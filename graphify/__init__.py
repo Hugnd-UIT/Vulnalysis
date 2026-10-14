@@ -49,7 +49,7 @@ def traverse(loc: Path, root: Path | None = None) -> tuple[list[dict], list[dict
     return (res.get('nodes', []), res.get('edges', []))
 
 
-def callgraph(target: str | Path, output: str | Path | None = None) -> dict:
+def callgraph(target: str | Path, output: str | Path | None = None, flow: str | Path | None = None) -> dict:
     from graphify.extract import collect, extract
 
     loc = Path(target).resolve()
@@ -101,6 +101,18 @@ def callgraph(target: str | Path, output: str | Path | None = None) -> dict:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
 
+    from graphify.src.flatten import flatten
+
+    flow_dest = None
+    if flow:
+        flow_dest = Path(flow).resolve()
+    elif output:
+        dest = Path(output).resolve()
+        flow_dest = dest.with_name('call-flows.jsonl')
+
+    flows = flatten(result, dest=flow_dest, fmt='jsonl') if flow_dest else flatten(result)
+    result['flows'] = flows
+
     return result
 
 
@@ -108,13 +120,15 @@ if __name__ == '__main__':
     args = sys.argv[1:]
 
     if not args:
-        print('Usage: python graphify/__init__.py <target> [output.json]')
+        print('Usage: python graphify/__init__.py <target> [output.json] [flow.jsonl]')
         sys.exit(1)
 
     target = args[0]
-    out = args[1] if len(args) > 1 else 'call-graph.json'
-    res = callgraph(target, out)
+    out = args[1] if len(args) > 1 else 'outputs/call-graph.json'
+    flow = args[2] if len(args) > 2 else None
+    res = callgraph(target, out, flow=flow)
     nodes = res.get('nodes', [])
     edges = res.get('edges', [])
     calls = [e for e in edges if e.get('relation') == 'calls']
-    print(f'[+] Done! Nodes: {len(nodes)}, Edges: {len(edges)}, Function calls: {len(calls)}')
+    flows = res.get('flows', [])
+    print(f'[+] Done! Nodes: {len(nodes)}, Edges: {len(edges)}, Function calls: {len(calls)}, Call flows: {len(flows)}')
