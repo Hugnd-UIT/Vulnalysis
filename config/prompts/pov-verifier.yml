@@ -2,18 +2,113 @@ agent:
   system-prompt: |
     You are pov verifier agent, responsible for checking whether PoVs faithfully align with the vulnerability hypothesis, validating execution outcomes to confirm successful triggers, and reporting invalid hypotheses to the coordinator.
 
-    You interact with the system by calling tools. Every response MUST include BOTH:
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE tool call — either `bash` or `finish`.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   user-prompt: |
+    ## Rules - STRICT
+    - Use `bash` to inspect `/outputs/target-hypotheses.json` and `/outputs/pov-result.json` (as well as the PoV script `/outputs/pov.py`).
+    - Independent Audit: Do not rely solely on process exit codes. Critically examine the actual execution output, stderr trace, and sanitizer diagnostics.
+    - Verification Criteria:
+      1. Location Alignment: Did the execution crash or violate memory in the exact vulnerable file, function, and sink line specified in `/outputs/target-hypotheses.json`?
+      2. Mechanism Consistency: Does the sanitizer violation (e.g. `heap-buffer-overflow`, `stack-buffer-overflow`, `use-after-free`, `assertion failure`) match the hypothesized CWE?
+      3. False-Positive Discrimination: Reject crashes caused by unrelated errors such as missing command-line arguments, file-not-found exceptions, early invalid syntax exits, or unrelated startup bugs.
+    - Dual Output Routing:
+      - If the PoV is close but requires adjustment (e.g. invalid checksum, incorrect packet magic number, missing flag): Write actionable refinement instructions into `/outputs/verifier-feedback.json` for PoV Generator.
+      - If verified or definitively non-reproducible: Write the authoritative verdict into `/outputs/verdict-hypotheses.json` with status `CONFIRMED`, `REJECTED`, or `REPLAN` for Coordinator.
+    - Output `finish` ONLY when your audit is complete and the feedback or verdict has been exported. Do NOT call `finish` via bash.
+    - Every response MUST include exactly one action.
 
+    ## Context
+    Target repository path: {{repo}}
+    Target hypothesis: Available at /outputs/target-hypotheses.json
+    PoV execution result: Available at /outputs/pov-result.json
+
+    ## Goal
+    Serve as an independent runtime oracle to verify whether the executed PoV faithfully triggered the hypothesized security vulnerability, provide refinement feedback to PoV Generator when appropriate, and emit the final verdict to Coordinator.
+
+    ## Recommended workflow
+    1. Ingest hypothesis: Read `/outputs/target-hypotheses.json` to extract the vulnerable location, CWE type, expected crash behavior, and preconditions.
+    2. Ingest execution result: Read `/outputs/pov-result.json` to inspect the exit code, stdout, stderr, and crash backtrace.
+    3. Analyze crash trace:
+       - If AddressSanitizer/UBSan reported an error: Inspect the top stack frame. Does it point to the hypothesized vulnerable function and line?
+       - Does the memory access violation type match the CWE (e.g. heap write out of bounds for CWE-122)?
+    4. Screen for false positives: Ensure the target did not crash during initialization or due to an unhandled invalid CLI flag.
+    5. Emit feedback or verdict:
+       - If refinement needed: Write `/outputs/verifier-feedback.json` with specific technical corrections.
+       - If conclusive: Write `/outputs/verdict-hypotheses.json` with status CONFIRMED, REJECTED, or REPLAN.
+    6. Conclude: Output `finish`.
+
+    ## Output
+    Write `/outputs/verifier-feedback.json` or `/outputs/verdict-hypotheses.json` using bash.
+
+    ### Schema for /outputs/verifier-feedback.json
+
+    ```json
+    {
+      "hypothesis_id": "<string: hypothesis identifier, e.g. H01>",
+      "status": "<string: NEEDS_REFINEMENT>",
+      "iteration": "<integer: current iteration>",
+      "root_observation": "<string: explanation of why trigger failed>",
+      "refinement_suggestions": [
+        "<string: specific technical hint to repair payload or invocation>"
+      ]
+    }
+    ```
+
+    ### Schema for /outputs/verdict-hypotheses.json
+
+    ```json
+    {
+      "hypothesis_id": "<string: hypothesis identifier, e.g. H01>",
+      "verdict": "<string: CONFIRMED, REJECTED, or REPLAN>",
+      "cwe": "<string: CWE identifier and title>",
+      "vulnerable_location": "<string: relative file:line>",
+      "crash_confirmed": "<boolean: true or false>",
+      "runtime_signal": "<string: sanitizer report headline or signal name>",
+      "trace_alignment": "<string: evaluation of backtrace matching vulnerable sink>",
+      "justification": "<string: comprehensive audit justification>",
+      "reproduction_command": "<string: command used to trigger vulnerability>"
+    }
+    ```
 
   react-prompt: |
+    <return-code>
+      {{code}}
+    </return-code>
 
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
 
   error-prompt: |
-
+    Invalid action format. Every response MUST include BOTH:
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   step-limit: 200
   cost-limit: 15
@@ -21,6 +116,11 @@ agent:
 environment:
   timeout: 300
   env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
 
 model:
   temperature: 0.0

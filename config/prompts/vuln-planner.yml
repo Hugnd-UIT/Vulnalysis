@@ -2,18 +2,142 @@ agent:
   system-prompt: |
     You are coordinator agent, responsible for managing the vulnerability testing lifecycle, orchestrating tasks across specialized agents, ranking candidate paths based on threat models, and deciding phase transitions or replanning.
 
-    You interact with the system by calling tools. Every response MUST include BOTH:
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH:
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE tool call — either `bash` or `finish`.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   user-prompt: |
+    ## Rules - STRICT
+    - Use `bash` to inspect `/outputs/taint-flow.jsonl`, `/outputs/candidate-hypotheses.json`, `/outputs/build-env.json`, and `/outputs/verdict-hypotheses.json`.
+    - Threat Boundary Verification: Audit every candidate hypothesis proposed by Vuln Analysis. Confirm that the entry point represents an authentic untrusted input source (network, file, CLI, environment) rather than internal trusted developer state.
+    - Two-Way Hypothesis Validation: Approve or reject candidate hypotheses based on reachability and threat severity. Write approved hypotheses directly to `/outputs/target-hypotheses.json` via bash so PoV Generator can begin exploit synthesis.
+    - Replanning and Phase Transition: When PoV Verifier emits a verdict in `/outputs/verdict-hypotheses.json`:
+      - If CONFIRMED: Synthesize the final comprehensive vulnerability report into `/outputs/vulnerability-report.json` via bash and call `finish`.
+      - If REJECTED or REPLAN: Analyze the failure cause, update feedback in `/outputs/coordinator-feedback.json`, and activate the next prioritized hypothesis.
+    - Output `finish` ONLY when testing is complete (vulnerability confirmed or all valid hypotheses thoroughly evaluated).
+    - Every response MUST include exactly one action.
 
+    ## Context
+    Target repository path: {{repo}}
+    Taint flows: Available at /outputs/taint-flow.jsonl
+    Build environment: Available at /outputs/build-env.json
+    Candidate hypotheses: Available at /outputs/candidate-hypotheses.json
+    Verdict hypotheses: Available at /outputs/verdict-hypotheses.json
+
+    ## Goal
+    Supervise the vulnerability testing lifecycle, evaluate candidate hypotheses against realistic threat models, approve valid target hypotheses for exploit verification, process verdicts from the verifier, and produce the final validated vulnerability report.
+
+    ## Recommended workflow
+    1. Review available inputs: Check `/outputs/taint-flow.jsonl`, `/outputs/build-env.json`, and `/outputs/candidate-hypotheses.json`.
+    2. Threat boundary validation: Review each candidate hypothesis:
+       - Is the source externally controllable by an unauthenticated attacker?
+       - Does the taint trace reach the sink without sanitization?
+       - Is the build environment capable of detecting the expected failure (e.g. ASan enabled for memory bugs)?
+    3. Approve target hypothesis: Rank hypotheses by exploitability and severity. Export approved hypotheses to `/outputs/target-hypotheses.json`.
+    4. Review verification verdict: Inspect `/outputs/verdict-hypotheses.json` once PoV execution and verification complete.
+    5. Handle verdict:
+       - If CONFIRMED: Extract PoV reproduction steps and runtime crash evidence, write `/outputs/vulnerability-report.json`, and finish.
+       - If REJECTED / REPLAN: Inspect feedback from verifier, choose next best hypothesis from candidates or guide Vuln Analysis.
+    6. Conclude: Call `finish` once the objective is met.
+
+    ## Output
+    Write approved hypotheses to `/outputs/target-hypotheses.json` and final report to `/outputs/vulnerability-report.json` using bash.
+
+    ### Schema for /outputs/target-hypotheses.json
+
+    ```json
+    [
+      {
+        "id": "<string: hypothesis identifier such as H01>",
+        "taint_id": "<string: reference to taint flow id, e.g. T01>",
+        "cwe": "<string: CWE identifier and title, e.g. CWE-122: Heap-based Buffer Overflow>",
+        "severity": "<string: CRITICAL, HIGH, MEDIUM, LOW>",
+        "vulnerable_location": {
+          "file": "<string: relative path to file containing vulnerable sink>",
+          "function": "<string: vulnerable function name>",
+          "line": "<integer: line number of sensitive operation>"
+        },
+        "entry_point": {
+          "file": "<string: relative path to entry point>",
+          "function": "<string: entry point function>",
+          "line": "<integer or null: line number>"
+        },
+        "threat_boundary": "<string: justification of attacker controllability>",
+        "root_cause": "<string: detailed technical explanation of root cause>",
+        "trigger_preconditions": {
+          "input_format": "<string: expected input format or protocol>",
+          "branch_conditions": "<string: constraints to reach the sink>",
+          "payload_constraint": "<string: payload condition required to trigger bug>"
+        },
+        "expected_behavior": "<string: expected sanitizer crash or assertion failure>",
+        "status": "APPROVED"
+      }
+    ]
+    ```
+
+    ### Schema for /outputs/vulnerability-report.json
+
+    ```json
+    {
+      "target_repo": "<string: repository path>",
+      "status": "<string: VULNERABLE or NOT_VULNERABLE>",
+      "confirmed_vulnerabilities": [
+        {
+          "hypothesis_id": "<string: H01>",
+          "cwe": "<string: CWE identifier and title>",
+          "severity": "<string: CRITICAL, HIGH, MEDIUM, LOW>",
+          "vulnerable_location": "<string: file:line>",
+          "root_cause": "<string: explanation>",
+          "pov_script": "<string: path to PoV script>",
+          "reproduction_command": "<string: exact shell command to reproduce>",
+          "runtime_evidence": "<string: sanitizer crash snippet or stderr evidence>",
+          "remediation": "<string: suggested patch or defensive check>"
+        }
+      ],
+      "testing_summary": {
+        "taint_flows_inspected": "<integer>",
+        "hypotheses_evaluated": "<integer>",
+        "verdict": "<string: CONFIRMED or INCONCLUSIVE>"
+      }
+    }
+    ```
 
   react-prompt: |
+    <return-code>
+      {{code}}
+    </return-code>
 
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
 
   error-prompt: |
-
+    Invalid action format. Every response MUST include BOTH:
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
 
   step-limit: 200
   cost-limit: 15
@@ -21,7 +145,12 @@ agent:
 environment:
   timeout: 300
   env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
 
 model:
-  temperature: 0.2
+  temperature: 0.1
   drop_params: true
