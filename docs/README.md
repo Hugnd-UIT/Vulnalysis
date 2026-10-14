@@ -1,6 +1,8 @@
 # Architecture Diagram
 
-![Architecture Diagram](architecture-diagram.png)
+<p align="center">
+  <img src="architecture-diagram.png" alt="Architecture Diagram" />
+</p>
 
 # Mô tả chi tiết
 
@@ -8,130 +10,112 @@
 
 ## 1. Repo Retriever
 
-- **Trách nhiệm:** Khảo sát toàn diện kho mã nguồn thông qua công cụ phân tích đồ thị để xây dựng call graph, tự động định vị các sources và sinks, từ đó trích xuất taint flow graph kết nối từ source đến sink để chuyển tiếp cho bộ điều phối.
+- **Trách nhiệm:** Khảo sát toàn diện kho mã nguồn thông qua Graphify và các công cụ phân tích cấu trúc để xây dựng đồ thị gọi hàm. Tự động truy vết và giải mã các hàm ẩn do con trỏ hàm, macro định nghĩa hoặc liên kết động gây ra nhằm hàn gắn các mắt xích đứt đoạn. Xử lý triệt để việc khử trùng lặp và chặn chu trình đệ quy lặp vô tận, bóc tách các chuỗi Taint Flow hoàn chỉnh và chuyển trực tiếp sang Vuln Analysis.
 
-- **Input:** Mã nguồn.
+- **Input:** Mã nguồn dự án cùng đồ thị gọi hàm từ Repo.
 
-- **Output:** Call graph và taint flow graph.
+- **Output:** Taint Flow hoàn chỉnh - Transfer taint flow gửi đến Vuln Analysis.
 
 - **Model:** Model nhanh.
 
-- **Tools:** Graphify, regex/grep search.
+- **Tools:** Graphify, Symbol analyzer, Traversal scripts.
 
 ---
 
 ## 2. Repo Builder
 
-- **Trách nhiệm:** Phân tích cấu hình dự án để thiết lập môi trường Docker khép kín, cài đặt các phụ thuộc theo từng ngôn ngữ, kích hoạt các chế độ giám sát/debug runtime như Sanitizer cho C/C++, Race detector cho Go, hoặc chế độ Debug/Trace cho Python/Node.js và tự động xử lý lỗi build để ứng dụng thực thi được.
+- **Trách nhiệm:** Phân tích cấu hình dự án để thiết lập môi trường Docker khép kín, cài đặt các gói phụ thuộc theo từng ngôn ngữ, kích hoạt các công cụ giám sát runtime phù hợp như Sanitizer, Race detector, Debugger hoặc Runtime tracer và tự động xử lý lỗi biên dịch để ứng dụng thực thi được, sau đó bàn giao môi trường hoàn chỉnh cho PoV Generator.
 
-- **Input:** Mã nguồn dự án, tập tin hướng dẫn build.
+- **Input:** Mã nguồn dự án và tập tin hướng dẫn cấu hình từ Repo.
 
-- **Output:** Ứng dụng/nhị phân sẵn sàng chạy kèm công cụ giám sát runtime. Kịch bản build tối ưu (`build.sh`) và danh sách gói phụ thuộc (`packages.txt`).
+- **Output:** Môi trường thực thi kèm công cụ giám sát runtime - Build env and runtime bàn giao cho PoV Generator.
 
-- **Model:** Model trung bình
+- **Model:** Model trung bình.
 
-- **Tools:** Shell code.
+- **Tools:** Docker execution, Shell script, Build harness.
 
 ---
 
 ## 3. Coordinator
 
-- **Trách nhiệm:** Quản lý vòng đời kiểm thử, phân bổ nhiệm vụ tuần tự đến các tác tử chuyên trách, lưu trữ ngữ cảnh giữa các pha, điều khiển vòng lặp phản hồi và kích hoạt cơ chế replan khi gặp bế tắc. Đảm nhiệm vai trò đánh giá threat model: xếp hạng ứng viên dựa trên bề mặt tấn công ngoài và thẩm định kết quả từ PoV Verifier dựa trên ranh giới tin cậy nhằm loại bỏ các lỗi vô hại trước khi xuất báo cáo.
+- **Trách nhiệm:** Bộ não điều phối cấp cao và quản lý mô hình hiểm họa. Tiếp nhận các giả thuyết ứng viên từ Vuln Analysis để tranh biện, phản biện và xác thực tính hợp lý theo ranh giới tin cậy. Tiếp nhận phán quyết cuối cùng từ PoV Verifier để chốt báo cáo lỗ hổng hoặc điều hướng chiến lược kiểm thử lại khi PoV thất bại.
 
-- **Input:** Báo cáo trạng thái và dữ liệu từ các tác tử con.
+- **Input:** Candidate hypotheses từ Vuln Analysis, Verdict hypotheses từ PoV Verifier.
 
-- **Output:** Chỉ thị thực thi nhiệm vụ, quyết định chuyển pha và báo cáo lỗ hổng đã thẩm định.
+- **Output:** Validate hypotheses phản biện lại Vuln Analysis, Báo cáo lỗ hổng thẩm định cuối cùng.
 
 - **Model:** Model mạnh.
 
-- **Tools:** Quản lý trạng thái, context summarizer.
+- **Tools:** Quản lý trạng thái, Context summarizer.
 
 ---
 
 ## 4. Vuln Analysis
 
-- **Trách nhiệm:** Đọc sâu mã nguồn các hàm trên đường dẫn nghi vấn, phân tích ngữ nghĩa để xác định nguyên nhân gốc rễ, đối chiếu phân loại CWE và trích xuất các điều kiện rẽ nhánh. Khi gặp các liên kết động hoặc interface bị đứt đoạn, agent chủ động tự tra cứu mã nguồn để nối tiếp và hoàn thiện chuỗi vết.
+- **Trách nhiệm:** Bộ não phân tích bảo mật ngữ nghĩa chuyên sâu. Đọc sâu mã nguồn các hàm dọc theo chuỗi Taint Flow do Repo Retriever cung cấp, đối chiếu điểm vào dữ liệu và điểm thao tác nhạy cảm, phân tích ngữ nghĩa để xác định nguyên nhân gốc rễ và phân loại CWE. Đề xuất giả thuyết ứng viên lên Coordinator để thẩm định hai chiều, sau đó bàn giao đặc tả mục tiêu khai thác kèm điều kiện kích hoạt sang PoV Generator.
 
-- **Input:** Đoạn mã nguồn trích xuất từ Repo Retriever và quyền truy cập tra cứu mã nguồn mở rộng khi cần.
+- **Input:** Taint Flow từ Repo Retriever, Validate hypotheses từ Coordinator, mã nguồn chi tiết trong repo.
 
-- **Output:** Bản đặc tả lỗi gồm vị trí, loại CWE, chuỗi vết hoàn chỉnh và các điều kiện kích hoạt.
+- **Output:** Candidate hypotheses đề xuất lên Coordinator, Target hypotheses chuyển sang PoV Generator.
 
 - **Model:** Model mạnh.
 
-- **Tools:** Trích xuất mã nguồn, code viewer, grep/symbol lookup.
+- **Tools:** Trích xuất mã nguồn, Code viewer, Semantic parser.
 
 ---
 
 ## 5. PoV Generator
 
-- **Trách nhiệm:** Thiết kế dữ liệu đầu vào và tạo kịch bản kiểm thử tự động thỏa mãn các điều kiện từ Vuln Analysis nhằm kích hoạt trạng thái lỗi, đồng thời tinh chỉnh kịch bản dựa trên phản hồi của PoV Verifier.
+- **Trách nhiệm:** Tác tử thực thi kịch bản kiểm thử. Tiếp nhận đặc tả mục tiêu từ Vuln Analysis và môi trường runtime từ Repo Builder để thiết kế dữ liệu đầu vào cùng kịch bản khai thác. Trực tiếp thực thi kịch bản trong môi trường Docker để thu thập kết quả và log chạy thực tế, chuyển toàn bộ sang PoV Verifier, đồng thời tinh chỉnh kịch bản dựa trên phản hồi kỹ thuật từ Verifier.
 
-- **Input:** Bản đặc tả lỗi và các điều kiện kích hoạt từ Vuln Analysis.
+- **Input:** Target hypotheses từ Vuln Analysis, Build env and runtime từ Repo Builder, Feedback từ PoV Verifier.
 
-- **Output:** Kịch bản kiểm thử tự động và tập tin dữ liệu đầu vào.
+- **Output:** Kịch bản kiểm thử kèm kết quả thực thi thực tế - Transfer PoV script and result gửi sang PoV Verifier.
 
 - **Model:** Model mạnh.
 
-- **Tools:** Trình sinh mã, shell/python execution.
+- **Tools:** Trình sinh mã, Runtime executor, Python script.
 
 ---
 
 ## 6. PoV Verifier
 
-- **Trách nhiệm:** Thực thi kịch bản kiểm thử trong môi trường Docker do Repo Builder thiết lập, giám sát mã thoát, bắt log crash hoặc lỗi runtime và phản hồi lại cho PoV Generator nếu kịch bản chưa kích hoạt thành công.
+- **Trách nhiệm:** Thẩm định viên độc lập đóng vai trò phê bình và giám sát. Không trực tiếp chạy lại mã mà phân tích kịch bản kiểm thử đối chiếu với log thực thi và mã lỗi runtime từ PoV Generator để xác minh xem lỗi kích hoạt có thực sự hợp lệ hay chỉ là crash vô hại. Gửi phản hồi kỹ thuật để PoV Generator tinh chỉnh kịch bản hoặc gửi phán quyết thẩm định cuối cùng lên Coordinator.
 
-- **Input:** Kịch bản kiểm thử từ PoV Generator và môi trường Docker từ Repo Builder.
+- **Input:** PoV script and result từ PoV Generator.
 
-- **Output:** Kết quả thẩm định kèm log lỗi runtime.
+- **Output:** Feedback kỹ thuật gửi cho PoV Generator, Verdict hypotheses gửi lên Coordinator.
 
-- **Model:** Model nhanh / trung bình.
+- **Model:** Model nhanh hoặc trung bình.
 
-- **Tools:** Docker execution, log parser.
-
----
-
-# Phân tích
+- **Tools:** Log parser, Runtime oracle analyzer.
 
 ---
 
-## 1. Điểm mạnh
-
-- **No endpoint file & trajectory drift:**
-  - *Lỗi được chỉ ra trong VulnGym:* Khi đánh giá các coding agent ở cấp độ repository, có tới **26.8% ca thất bại ở tác vụ End-to-End là do không tìm được bất kỳ file nào chứa entry point hoặc critical operation**. Agent duyệt mã tự do bằng các lệnh rời rạc thường bị trajectory drift qua hàng chục turn và nhanh chóng tràn cửa sổ ngữ cảnh.
-  
-  - *Khắc phục:* Tác tử `Repo Retriever` sử dụng `Graphify` để tự động bóc tách toàn diện call graph và taint flow graph thô. Việc này cô lập không gian tìm kiếm rộng lớn thành các Candidate Slices, chuyển giao trực tiếp cho `Vuln Analysis` mà không để agent tự mò mẫm thủ công.
-
-- **Over-classification & over-analyzing patched guards:**
-  - *Lỗi được chỉ ra trong Yildiz et al.:* LLM và agent có xu hướng đoán bừa mã lành thành có lỗ hổng, khiến pairwise accuracy thấp hơn cả đoán ngẫu nhiên. Khi gặp mã đã vá, LLM thường suy đoán vô căn cứ rằng rào chắn bảo vệ bị vượt qua, gây ra lượng lớn cảnh báo giả.
-  
-  - *Khắc phục:* Tách biệt phân tích giả thuyết khỏi kiểm chứng thực thi. Mọi nghi vấn buộc phải chạy thực tế trong Docker của `Repo Builder`; nếu không kích hoạt được crash hay vi phạm runtime, cảnh báo giả sẽ bị loại bỏ hoàn toàn.
-
-- **Trace incompleteness & static blindness:**
-  - *Lỗi được chỉ ra trong VulnGym & IRIS:* Phân tích tĩnh truyền thống thường bị mù trước các liên kết động, làm đứt gãy đường truyền và khiến tỷ lệ khớp chuỗi vết trung gian chỉ đạt 14–26%.
-  
-  - *Khắc phục:* `Vuln Analysis` được cấp công cụ tự tra cứu để chủ động tìm kiếm mã nguồn cục bộ, nối lại các liên kết động bị đứt đoạn mà không cần qua các khâu điều phối trung gian.
-
-- **Prohibitive token cost & budget exhaustion:**
-  - *Lỗi được chỉ ra trong Revelio & Wen et al.:* Dùng một model mạnh duy nhất chạy toàn bộ vòng lặp ReAct tốn tới $10–$20/repo và dễ cạn quota ngữ cảnh trước khi tìm thấy mã lỗi.
-  
-  - *Khắc phục:* Phân cấp mô hình theo chi phí: dùng model nhẹ cho quét đồ thị, model vừa cho dựng môi trường, và chỉ dùng model mạnh cho phân tích logic và sinh kịch bản kiểm thử.
-
-- **C/C++ scope lock:**
-  - *Hạn chế của Revelio:* Revelio chứng minh PoV hiệu quả nhưng bị giới hạn trong phạm vi Memory Safety trên C/C++ với AddressSanitizer/UBSan.
-  
-  - *Khắc phục:* Thiết kế `Repo Builder` đa ngôn ngữ, tự động nhận diện hệ sinh thái dự án, cấu hình môi trường và chèn công cụ giám sát runtime tương ứng.
-
-- **AI-powered triage & threat model:**
-  - *Hạn chế của Revelio:* Crash tái hiện được chưa chắc đã là lỗ hổng bảo mật nếu nằm ngoài ranh giới tin cậy, Revelio phải lọc thủ công bằng con người.
-  
-  - *Khắc phục:* `Coordinator` tự động đối chiếu kết quả crash với mô hình hiểm họa của dự án và ranh giới tin cậy, loại bỏ các lỗi DoS nội bộ hoặc assertion vô hại trước khi xuất báo cáo.
+# Đóng góp
 
 ---
 
-## 2. Điểm yếu
+## 1. Đề xuất kiến trúc đa tác tử phân tầng hoàn chỉnh từ phân tích mã nguồn đến thực thi kiểm chứng
 
-- **Dynamic tracing & search budget:** Khi gặp framework phân tán qua quá nhiều tầng trừu tượng, việc `Vuln Analysis` mở rộng tra cứu liên tục có thể làm tăng số lượt gọi tool và tốn ngữ cảnh nếu không giới hạn độ sâu hợp lý.
+Xây dựng hệ thống phối hợp đa tác tử gồm sáu thành phần chuyên biệt: Repo Retriever, Repo Builder, Coordinator, Vuln Analysis, PoV Generator và PoV Verifier. Kiến trúc phân tách độc lập giữa làn phân tích tĩnh và làn đóng gói môi trường runtime, khắc phục triệt để hiện tượng quá tải ngữ cảnh và cạn kiệt ngân sách tính toán đã được chỉ ra trong các nghiên cứu SEC-bench và IEEE Access.
 
-- **Path constraint solving bottleneck:** Việc kích hoạt lỗi đòi hỏi input vượt qua các điều kiện rẽ nhánh phức tạp. Dù ReAct agent có thể lặp để thử sai, việc giải các ràng buộc cứng mà thiếu công cụ chuyên dụng vẫn là một rào cản.
+## 2. Thiết kế lược đồ bằng chứng thống nhất cho toàn bộ chu trình kiểm thử
 
-- **Feedback loop latency:** Vòng lặp giữa `Coordinator` <-> `Vuln Analysis` và `PoV Generator` <-> `PoV Verifier` có thể kéo dài thời gian xử lý nếu test liên tục thất bại, đòi hỏi phải có ngưỡng dừng (turn limit) chặt chẽ.
+Chuẩn hóa lược đồ dữ liệu trung gian có cấu trúc xuyên suốt giữa các tác tử, bao gồm phân loại CWE, vị trí tệp tin và dòng mã nguồn, entry point, critical operation, chuỗi vết source-to-sink trace, precondition kích hoạt, kịch bản PoV và kết quả thực thi runtime. Việc chuẩn hóa này loại bỏ triệt để hiện tượng ảo giác, tạo cầu nối dữ liệu chặt chẽ và nhất quán giữa các khâu suy luận.
+
+## 3. Cơ chế sàng lọc và xếp hạng ứng viên dựa trên khả năng tiếp cận và bằng chứng thực tế
+
+Thiết lập quy trình ưu tiên và sàng lọc giả thuyết dựa trên bốn trụ cột chính:
+- Tính khả thi của đường dẫn thực thi - Reachability analysis qua đồ thị gọi hàm.
+- Bằng chứng phân tích cú pháp và ngữ nghĩa từ Repo Retriever.
+- Mức độ nghiêm trọng của phân loại lỗi - Severity scoring.
+- Khả năng kiểm chứng thực tế trong môi trường sandbox để loại bỏ sớm các cảnh báo giả.
+
+## 4. Kiểm soát bùng nổ đường đi và chống trôi ngữ cảnh bằng lát cắt Taint Flow
+
+Ứng dụng đồ thị Graphify kết hợp cơ chế khử trùng lặp và chặn chu trình đệ quy lặp vô tận, tự động giải mã con trỏ hàm và liên kết ẩn. Đóng gói mã nguồn thành các lát cắt Taint Flow độc lập gửi trực tiếp cho Vuln Analysis, giúp tác tử phân tích dứt điểm từng lát cắt và làm mới bộ nhớ đệm, triệt tiêu hoàn toàn hiện tượng mất trí nhớ khi xử lý kho mã nguồn quy mô lớn.
+
+## 5. Quy trình đánh giá thực nghiệm toàn diện và kiểm soát rò rỉ dữ liệu
+
+Định hình khung đánh giá thực nghiệm đa chiều bao gồm độ chính xác phát hiện, năng lực định vị dòng lỗi, độ bao phủ chuỗi vết, tỷ lệ thực thi PoV thành công, tỷ lệ cảnh báo giả, thời gian thực thi và chi phí token. Tích hợp nghiên cứu bóc tách từng thành phần - Ablation study và quy trình kiểm định rò rỉ dữ liệu huấn luyện - Data leakage nhằm bảo đảm tính khách quan và độ tin cậy khoa học.
