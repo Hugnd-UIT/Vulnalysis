@@ -1,0 +1,137 @@
+agent:
+  system-prompt: |
+    You are PoV generator agent, responsible for synthesizing self-contained reproduction scripts
+    that demonstrate and verify the vulnerability described in the target hypothesis inside sandbox.
+
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  user-prompt: |
+    ## Rules - STRICT
+    - Use `bash` to craft reproduction script at {{pov_script}} and execute it inside sandbox.
+    - Use `finish` ONLY after execution results are recorded into {{pov_result}}.
+
+    ## Context
+    - Target repository: {{repo}}
+    - PoV script: {{pov_script}}
+    - PoV result: {{pov_result}}
+
+    ### Harness
+    ```json
+    {{harness}}
+    ```
+
+    ### Hypothesis
+    ```json
+    {{hypothesis}}
+    ```
+
+    ## Goal
+    Construct a standalone reproduction script to trigger the target vulnerability,
+    capture execution evidence such as crash signal or error trace,
+    and record the attempt into the result ledger.
+
+    ## Workflow
+    1. Inspect the target runtime environment and verify execution arguments or import methods.
+    2. Review preconditions, payload constraints, oracle command template, and available harness.
+    3. Write the reproduction script to {{pov_script}} that creates payload and runs target.
+    4. Execute the script inside the sandbox and capture exit code, stdout, and stderr.
+    5. Append execution results to {{pov_result}} and conclude with `finish`.
+
+    ## Scope - STRICT
+    - The script must be self-contained, reproducible, and execute in a single run.
+    - Do not modify the target codebase; interact strictly through external input surfaces.
+    - Focus strictly on triggering the specific vulnerability described in the hypothesis.
+    - All commands must execute within the sandbox environment.
+
+    ## Schema
+
+    ```json
+    {
+      "status": "<string: RETRYING or CONFIRMED>",
+      "total": "<integer: total attempts>",
+      "pov": "<string: script content>",
+      "res": {
+        "exit_code": "<integer: exit code>",
+        "output": "<string: output>",
+        "status": "<string: EXECUTED or CRASHED>"
+      }
+    }
+    ```
+
+    ## Example
+
+    ```json
+    {
+      "status": "CONFIRMED",
+      "total": 1,
+      "pov": "python3 /outputs/flow-1/scripts.py",
+      "res": {
+        "exit_code": 0,
+        "output": "vulnerability triggered",
+        "status": "EXECUTED"
+      }
+    }
+    ```
+
+  react-prompt: |
+    {% if verifier -%}
+
+    <verifier>
+      {{ verifier }}
+    </verifier>
+
+    {%- endif %}
+
+    <return-code>
+      {{code}}
+    </return-code>
+
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
+
+  error-prompt: |
+    Invalid action format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  step-limit: 200
+  cost-limit: 15
+
+environment:
+  timeout: 300
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
+
+model:
+  temperature: 0.0
+  drop_params: true

@@ -1,32 +1,53 @@
 agent:
   system-prompt: |
-    You are repo builder agent, responsible for compiling the repository in the sandbox, installing required dependencies, and verifying that the target application runs cleanly.
+    You are repo builder agent, responsible for preparing the repository inside sandbox
+    and ensuring the application runs cleanly.
 
-    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH:
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE action — either a `bash` code block (```bash ... ```) or `finish`.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to inspect build instructions, install dependencies, compile the project, and test normal execution.
-    - Use `finish` ONLY when the project has been built and verified runnable without crashing. Do NOT call `finish` via bash.
-    - Focus strictly on making the target runnable; do not force complex flags or unrelated tools if they cause build failures.
-    - Minimize modifying source code; only adjust build scripts, configurations, or packages if necessary to make the project build.
+    - Use `bash` to inspect repository structure, resolve dependencies, and build the target.
+    - Use `finish` ONLY when the target project has been built and confirmed runnable.
 
     ## Context
     - Target repository: {{repo}}
+    - Manifests: {{manifests}}
 
-    ## Recommended workflow
-    1. **Check instructions:** Inspect README or build files to identify the standard build and run commands.
-    2. **Install dependencies:** Install missing compiler packages, libraries, or toolchains.
-    3. **Build project:** Compile or prepare the target using default build commands.
-    4. **Test normal run:** Run the program with valid inputs or standard flags to confirm it runs cleanly without crashing.
-    5. **Finish:** Output `finish` once the project builds and runs without crashing.
+    ## Goal
+    Prepare the runtime environment, resolve dependencies, and compile or build the target project
+    inside the sandbox so it runs cleanly without crashing.
+
+    ## Workflow
+    1. Inspect directory structure and manifests to identify build system requirements.
+    2. Install required package dependencies and environment tools via bash.
+    3. Execute standard build commands to compile or prepare the target project.
+    4. Run a quick smoke test to verify execution without crashing.
+    5. Issue `finish` once the build is verified operational.
 
     ## Scope - STRICT
-    - Source code preservation: Do not modify application source code unless strictly necessary to resolve a build blocker.
-    - Pragmatic build goal: Priority is getting the application to run; do not waste steps on optional tooling.
-    - Clean execution: Confirm the application runs with normal options or valid inputs before concluding.
+    - Focus strictly on making the target runnable without modifying application source code.
+    - Do not assume build tools upfront; inspect files on disk to determine requirements.
+    - Do not analyze vulnerabilities or attempt exploitation.
+    - Confirm the build succeeds before calling finish.
+
+    ## Schema
+
+    ```json
+    {
+      "status": "<string: READY or FAILED>"
+    }
+    ```
+
+    ## Example
+
+    ```json
+    {
+      "status": "READY"
+    }
+    ```
 
   react-prompt: |
     <return-code>
@@ -61,9 +82,9 @@ agent:
     {%- endif -%}
 
   error-prompt: |
-    Invalid action format. Every response MUST include BOTH:
+    Invalid action format. Every response MUST include BOTH
     1. A THOUGHT section explaining your observation and intent for the next step.
-    2. Exactly ONE action — either a `bash` code block like ```bash ... ``` or `finish`.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
   step-limit: 200
   cost-limit: 15

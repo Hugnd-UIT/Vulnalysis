@@ -5,6 +5,7 @@ from models.provider import OpenAI
 
 class RepoBuilderAgent(BaseAgent):
     def __init__(self, sandbox=None, config_path=None, provider_cls=OpenAI):
+        
         # Initialize base agent
         super().__init__(
             name="repo-builder",
@@ -13,8 +14,7 @@ class RepoBuilderAgent(BaseAgent):
             provider_cls=provider_cls,
         )
 
-    # Detect build manifests
-    def detect_manifests(self, repo_path):
+    def manifest(self, repo_path):
         target = Path(repo_path).resolve()
         manifest_names = {
             "Makefile", "makefile", "GNUmakefile",
@@ -30,13 +30,12 @@ class RepoBuilderAgent(BaseAgent):
                     found.append(item.name)
         return sorted(found)
 
-    # Run repo builder
     def run(self, repo_path):
         # Reset memory
         self.memory.clear()
         self.step = 0
 
-        manifests = self.detect_manifests(repo_path)
+        manifests = self.manifest(repo_path)
 
         # Build prompt
         initial_task = self.render(
@@ -61,8 +60,9 @@ class RepoBuilderAgent(BaseAgent):
 
             # Finish
             if action == "finish" or (not action and "finish" in reply.lower()):
-                self.log(thought=thought, action="finish", observation="Build environment preparation completed")
-                return True
+                self.log(thought=thought, action="finish", observation="Repo builder completed")
+                extracted = self.extract_json(reply)
+                return extracted or True
 
             # Execute
             if action == "bash" and command:

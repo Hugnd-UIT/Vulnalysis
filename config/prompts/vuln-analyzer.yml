@@ -1,0 +1,186 @@
+agent:
+  system-prompt: |
+    You are vuln analyzer agent, responsible for investigating a taint flow slice across the codebase
+    to uncover vulnerabilities, classify CWE weaknesses, and formulate precise hypotheses.
+
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  user-prompt: |
+    ## Rules - STRICT
+    - Use `bash` to trace source code files along the taint flow slice.
+    - Use `finish` ONLY when hypothesis JSON is written to {{hypotheses}}.
+
+    ## Context
+    - Target repository: {{repo}}
+    - Hypotheses: {{hypotheses}}
+
+    ### Taint flow
+    ```json
+    {{taint_flow}}
+    ```
+
+    ## Goal
+    Audit this taint flow slice to verify if untrusted input propagates from entry point
+    to sink without validation, classify the CWE weakness, and formulate a complete
+    hypothesis with preconditions and expected failure behavior.
+
+    ## Workflow
+    1. Inspect the sink function to identify the dangerous operation and format.
+    2. Inspect the entry point to verify how external input is ingested.
+    3. Trace intermediate transformations, bounds checks, and sanitizers.
+    4. Synthesize the finding into a complete structured hypothesis.
+    5. Write the hypothesis to {{hypotheses}} and conclude with `finish`.
+
+    ## Scope - STRICT
+    - Examine function bodies, variable propagation, sanitizers, and sink operations.
+    - Base every conclusion on concrete code evidence from files on disk.
+    - Focus strictly on the designated slice; do not analyze unrelated code.
+    - Do not execute exploits or modify source code.
+    - Reference exact file names, function names, and line numbers.
+
+    ## Schema
+
+    ```json
+    {
+      "id": "<string: flow id>",
+      "cwe": [
+        "<string: cwe id>"
+      ],
+      "title": "<string: title>",
+      "description": "<string: description>",
+      "source": {
+        "ep": "<string: entry point>",
+        "file": "<string: file path>",
+        "function": "<string: function name>"
+      },
+      "sink": {
+        "file": "<string: file path>",
+        "function": "<string: function name>",
+        "line": "<integer: line number>",
+        "operation": "<string: operation>"
+      },
+      "flow": {
+        "chain": [
+          "<string: function name>"
+        ]
+      },
+      "preconditions": [
+        "<string: precondition>"
+      ],
+      "hint": "<string: payload hint>",
+      "expected": "<string: expected behavior>",
+      "oracle": {
+        "type": "<string: sanitizer, canary, pattern, status, or timing>",
+        "channel": "<string: stdout, stderr, exit_code, http_body, or http_status>",
+        "operator": "<string: contains, regex, equals, or greater_than>",
+        "expected": "<string: expected indicator>",
+        "target": "<string: sink function or file>",
+        "command": "<string: example execution command>"
+      },
+      "remediation": "<string: fix recommendation>"
+    }
+    ```
+
+    ## Example
+    ```json
+    {
+      "id": "P001",
+      "cwe": [
+        "CWE-78"
+      ],
+      "title": "OS Command Injection",
+      "description": "User input passed to system command without sanitization",
+      "source": {
+        "ep": "HTTP query parameter",
+        "file": "server.py",
+        "function": "handle_query"
+      },
+      "sink": {
+        "file": "server.py",
+        "function": "execute_cmd",
+        "line": 42,
+        "operation": "os.system"
+      },
+      "flow": {
+        "chain": [
+          "handle_query",
+          "execute_cmd"
+        ]
+      },
+      "preconditions": [
+        "Parameter contains shell characters"
+      ],
+      "hint": "Inject semicolon followed by command",
+      "expected": "Command executes in shell",
+      "oracle": {
+        "type": "canary",
+        "channel": "stdout",
+        "operator": "contains",
+        "expected": "VULN_CANARY_TOKEN",
+        "target": "execute_cmd",
+        "command": "python server.py --param '; echo VULN_CANARY_TOKEN;'"
+      },
+      "remediation": "Validate input and avoid shell invocation"
+    }
+    ```
+
+  react-prompt: |
+    {% if coordinator_feedback or feedback -%}
+    <coordinator-feedback>
+      {{ coordinator_feedback or feedback }}
+    </coordinator-feedback>
+    {%- endif %}
+
+    <return-code>
+      {{code}}
+    </return-code>
+
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
+
+  error-prompt: |
+    Invalid action format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  step-limit: 200
+  cost-limit: 15
+
+environment:
+  timeout: 300
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
+
+model:
+  temperature: 0.0
+  drop_params: true

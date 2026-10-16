@@ -1,3 +1,4 @@
+import json
 import random
 import re
 import time
@@ -26,7 +27,6 @@ class BaseAgent:
         self.user_prompt = agent_cfg.get("user-prompt", "")
         self.react_prompt = agent_cfg.get("react-prompt", "")
         self.error_prompt = agent_cfg.get("error-prompt", "")
-        self.error_json_prompt = agent_cfg.get("error-json-prompt", "")
         self.step_limit = int(agent_cfg.get("step-limit", 200))
         self.cost_limit = float(agent_cfg.get("cost-limit", 15.0))
         self.timeout = int(env_cfg.get("timeout", 300))
@@ -84,20 +84,47 @@ class BaseAgent:
         action = None
         command = ""
 
+        if not text:
+            return thought, action, command
+
         # Extract thought
-        thought_match = re.search(r"THOUGHT:\s*(.*?)(?=(```|bash|finish|$))", text, re.DOTALL | re.IGNORECASE)
+        thought_match = re.search(r"THOUGHT[\s:\-]+(.*?)(?=(```|bash|finish|$))", text, re.DOTALL | re.IGNORECASE)
         if thought_match:
             thought = thought_match.group(1).strip()
 
         # Extract action
-        bash_match = re.search(r"```(?:bash|sh)?\s*(.*?)\s*```", text, re.DOTALL)
-        if bash_match:
-            action = "bash"
-            command = bash_match.group(1).strip()
-        elif "finish" in text.lower():
+        is_finish = re.search(r"^\s*finish\b", text, re.MULTILINE | re.IGNORECASE) or ("finish" in text.lower() and not re.search(r"```(?:bash|sh)\b", text, re.IGNORECASE))
+        if is_finish:
             action = "finish"
+        else:
+            bash_match = re.search(r"```(?:bash|sh)\s*(.*?)\s*```", text, re.DOTALL)
+            if not bash_match and not re.search(r"\bfinish\b", text, re.IGNORECASE):
+                bash_match = re.search(r"```(?!(?:json|yaml|yml))\s*(.*?)\s*```", text, re.DOTALL)
+            if bash_match:
+                action = "bash"
+                command = bash_match.group(1).strip()
+            elif "finish" in text.lower():
+                action = "finish"
 
         return thought, action, command
+
+    # Extract json
+    def extract_json(self, text):
+        if not text:
+            return None
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                pass
+        match = re.search(r"(\{[\s\S]*\})", text)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                pass
+        return None
 
     # Call llm
     def call(self, messages, **kwargs):

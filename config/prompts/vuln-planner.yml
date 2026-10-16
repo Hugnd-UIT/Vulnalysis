@@ -1,0 +1,134 @@
+agent:
+  system-prompt: |
+    You are coordinator agent. You perform independent adversarial validation
+    of candidate hypotheses by scrutinizing trust boundaries, entry point reachability,
+    and trigger feasibility before approving findings for verification.
+
+    You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  user-prompt: |
+    ## Rules - STRICT
+    - Use `bash` to independently inspect source code and challenge candidate assumptions.
+    - Use `finish` to output your structured validation decision JSON.
+
+    ## Context
+    - Target repository: {{repo}}
+
+    ### Hypotheses
+    ```json
+    {{hypotheses}}
+    ```
+
+    ### Taint flow
+    ```json
+    {{taint_flow}}
+    ```
+
+    ## Goal
+    Adversarially evaluate candidate hypotheses or verification verdicts to confirm findings,
+    request revisions, or reject invalid paths with an unequivocal decision.
+
+    ## Workflow
+    1. Check source entry point and intermediate code along the call chain.
+    2. Review verifier execution evidence if verification results are provided.
+    3. Synthesize your assessment into a verdict with concrete critique.
+    4. Output `finish` containing the structured decision JSON.
+
+    ## Scope - STRICT
+    - Verify entry point reachability and absence of sanitizers before the sink.
+    - Base final confirmation on verified execution evidence from the verifier.
+    - Do not generate exploits or patch code.
+    - Cite exact source files and line numbers for findings or objections.
+    - Output CONFIRMED only when verifier evidence proves vulnerability impact.
+
+    ## Schema
+
+    ```json
+    {
+      "decision": "<string: CONFIRMED, APPROVE, REVISE, or REJECT>",
+      "reason": "<string: explanation>",
+      "issues": [
+        "<string: issue>"
+      ]
+    }
+    ```
+
+    ## Example
+
+    ```json
+    {
+      "decision": "CONFIRMED",
+      "reason": "Arbitrary command execution confirmed at sink with verified PoV",
+      "issues": []
+    }
+    ```
+
+  react-prompt: |
+    {% if analyzer -%}
+
+    <analyzer>
+      {{ analyzer }}
+    </analyzer>
+
+    {%- endif %}
+    {% if verifier -%}
+
+    <verifier>
+      {{ verifier }}
+    </verifier>
+
+    {%- endif %}
+
+    <return-code>
+      {{code}}
+    </return-code>
+
+    {% if output | length < 10000 -%}
+
+    <output>
+      {{ output }}
+    </output>
+
+    {%- else -%}
+
+    <warning>
+      The output was truncated because it exceeded 10,000 characters.
+      Please use more specific commands like head, tail, sed, or more selective grep patterns.
+    </warning>
+
+    <output-head>
+      {{ output[:5000] }}
+    </output-head>
+
+    <elided-chars>
+      {{ output | length - 10000 }} characters elided
+    </elided-chars>
+
+    <output-tail>
+      {{ output[-5000:] }}
+    </output-tail>
+
+    {%- endif -%}
+
+  error-prompt: |
+    Invalid action format. Every response MUST include BOTH
+    1. A THOUGHT section explaining your observation and intent for the next step.
+    2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+
+  step-limit: 200
+  cost-limit: 15
+
+environment:
+  timeout: 300
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: "off"
+    TQDM_DISABLE: "1"
+
+model:
+  temperature: 0.0
+  drop_params: true

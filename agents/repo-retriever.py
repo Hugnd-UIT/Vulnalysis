@@ -8,6 +8,7 @@ from models.provider import OpenAI
 
 class RepoRetrieverAgent(BaseAgent):
     def __init__(self, sandbox=None, config_path=None, provider_cls=OpenAI):
+        
         # Initialize base agent
         super().__init__(
             name="repo-retriever",
@@ -70,7 +71,6 @@ class RepoRetrieverAgent(BaseAgent):
         except Exception:
             return {"nodes": [], "edges": []}
 
-    # Run repo retriever
     def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None):
         # Reset memory
         self.memory.clear()
@@ -84,12 +84,6 @@ class RepoRetrieverAgent(BaseAgent):
         call_flows_file = flows_path or "/outputs/call-flows.jsonl"
         taint_flows_file = taint_path or "/outputs/taint-flows.jsonl"
 
-        local_flows = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
-        flows_count = 0
-        if local_flows.exists():
-            with open(local_flows, "r", encoding="utf-8") as f:
-                flows_count = sum(1 for line in f if line.strip())
-
         # Build prompt
         initial_task = self.render(
             self.user_prompt,
@@ -98,10 +92,8 @@ class RepoRetrieverAgent(BaseAgent):
             nodes=nodes_count,
             edges=edges_count,
             call_graph=str(call_graph_file),
-            flows=flows_count,
             call_flows=str(call_flows_file),
             taint_flows=str(taint_flows_file),
-            samples="\n".join(files[:20]),
         )
 
         messages = [
@@ -120,7 +112,7 @@ class RepoRetrieverAgent(BaseAgent):
 
             # Finish
             if action == "finish" or (not action and "finish" in reply.lower()):
-                self.log(thought=thought, action="finish", observation="Retrieval completed")
+                self.log(thought=thought, action="finish", observation="Repo retriever completed")
                 return taint_flows_file
 
             # Execute
