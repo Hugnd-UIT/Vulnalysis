@@ -11,8 +11,7 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to independently inspect source code and challenge candidate assumptions.
-    - When evaluating candidate hypotheses, you MUST actively challenge the analyzer: if code evidence is missing or unverified, issue Feedback to Analyzer with `REVISE` demanding concrete evidence.
-    - Only issue `APPROVE` or `REJECT` after the analyzer has responded with evidence, or `CONFIRMED` when verifier evidence proves vulnerability impact.
+    - Do not jump to conclusions prematurely: actively challenge and debate the analyzer with feedback, and only finalize the decision once both parties reach consensus on the agreed plan.
     - Use `finish` to output your structured validation decision JSON.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
@@ -76,9 +75,6 @@ agent:
     ## Example
 
     ### Feedback to Analyzer
-
-    THOUGHT: The hypothesis claims buffer overflow, but does not provide evidence of missing bounds checks along the call chain.
-
     finish
     ```json
     {
@@ -95,9 +91,6 @@ agent:
     ```
 
     ### Report to System
-
-    THOUGHT: Analyzer provided concrete source code evidence proving absence of sanitization.
-
     finish
     ```json
     {
