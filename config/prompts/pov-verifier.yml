@@ -10,7 +10,7 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to inspect reproduction script, execution output, and side-effect markers.
-    - Use `finish` to output RETRY feedback to PoV or report to Planner as structured JSON.
+    - Use `finish` to output feedback to PoV or report to Planner as structured JSON.
 
     ## Context
     - Target repository: {{repo}}
@@ -25,21 +25,21 @@ agent:
     ## Goal
     Independently verify whether execution evidence genuinely substantiates the vulnerability
     at the designated sink and matches the expected CWE failure mechanism,
-    returning an unequivocal verdict of CONFIRMED, RETRY, or FAILED.
+    reporting findings directly to Planner or feedback to PoV.
 
     ## Workflow
     1. Inspect {{pov_script}} to understand the input structure and trigger mechanism.
     2. Review stdout, stderr, exit codes, crash signals, and side-effect evidence.
     3. Compare observed execution against the sink location and expected behavior.
     4. Verify the failure is not caused by irrelevant environmental errors.
-    5. Output RETRY feedback to PoV, or CONFIRMED or FAILED report to Planner.
+    5. Output feedback to PoV, or report execution evidence to Planner.
 
     ## Scope - STRICT
     - Confirm the vulnerability ONLY when both location alignment and mechanism alignment match.
     - Dismiss failures resulting from bad command flags, missing env vars, or syntax bugs.
     - Do not rewrite the reproduction script or author new exploits.
     - Base verdicts strictly on demonstrable runtime evidence.
-    - If recommending RETRY, provide concrete constraints and fixes for the next attempt.
+    - If recommending retry, provide concrete constraints and fixes for the next attempt.
 
     ## Schema
 
@@ -47,7 +47,6 @@ agent:
 
     ```json
     {
-      "decision": "RETRY",
       "issues": [
         "<string: issue>"
       ],
@@ -61,7 +60,6 @@ agent:
 
     ```json
     {
-      "decision": "<string: CONFIRMED or FAILED>",
       "reason": "<string: reason>",
       "alignment": {
         "location_match": "<boolean>",
@@ -76,7 +74,6 @@ agent:
 
     ```json
     {
-      "decision": "RETRY",
       "issues": [
         "Payload does not reach the sink"
       ],
@@ -90,7 +87,6 @@ agent:
 
     ```json
     {
-      "decision": "CONFIRMED",
       "reason": "Arbitrary command execution confirmed at sink",
       "alignment": {
         "location_match": true,

@@ -179,12 +179,12 @@ class Orchestrator:
 
             last_verdict = verdict
             decision = verdict.get("decision", "").upper()
-            log.info(f"Verifier decision: {decision}")
-
-            if decision in ("CONFIRMED", "FAILED"):
+            if decision in ("CONFIRMED", "FAILED") or ("alignment" in verdict and "issues" not in verdict):
+                log.info("Verifier produced report to Planner")
                 return verdict
 
             # Retry with feedback
+            log.info("Verifier produced feedback to PoV")
             feedback = verdict
 
         return last_verdict or {"decision": "FAILED", "reason": "PoV rounds exhausted"}
