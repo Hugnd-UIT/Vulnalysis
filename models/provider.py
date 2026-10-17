@@ -56,15 +56,13 @@ class OpenAI:
             messages=messages,
             **call_kwargs
         )
-        resp_extra = getattr(response, "response", {}) or {}
-        feedback = resp_extra.get("promptFeedback", {}) if isinstance(resp_extra, dict) else {}
-        if feedback.get("blockReason"):
-            reason = feedback.get("blockReason")
-            msg = feedback.get("blockReasonMessage") or "Blocked by Gemini filter"
-            return f"[!] Blocked by Gemini policy ({reason}): {msg}"
-
         if not response or not getattr(response, "choices", None):
-            return ""
+            resp_dict = getattr(response, "model_dump", None) and response.model_dump() or {}
+            inner_resp = resp_dict.get("response") if isinstance(resp_dict, dict) else None
+            pf = inner_resp.get("promptFeedback") if isinstance(inner_resp, dict) else None
+            if pf and pf.get("blockReason"):
+                return "[!] Block by policy"
+            return "[!] Block by policy" if not getattr(response, "choices", None) else ""
         choice = response.choices[0]
         finish_reason = getattr(choice, "finish_reason", None)
         msg = choice.message
@@ -76,7 +74,7 @@ class OpenAI:
             content = reasoning
 
         if not content and finish_reason in ("content_filter", "safety"):
-            return f"[!] Blocked by safety policy: {finish_reason}"
+            return "[!] Block by policy"
 
         return content
 

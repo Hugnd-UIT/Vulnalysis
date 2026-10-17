@@ -1,5 +1,6 @@
 graphify-out/
-outputs/
 __pycache__/
+scratch/
+outputs/
 
 benchmark/

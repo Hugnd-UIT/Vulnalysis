@@ -148,8 +148,9 @@ class BaseAgent:
     # Logging helpers
     def log_thought(self, thought):
         import logging
-        text = str(thought).strip().replace(chr(10), " ") if thought else "[Analyzing next action]"
-        logging.getLogger("vulnalysis").info(f"[{self.name}] Thought: {text}")
+        if thought:
+            text = str(thought).strip().replace(chr(10), " ")
+            logging.getLogger("vulnalysis").info(f"[{self.name}] Thought: {text}")
 
     def log_action(self, action, command=""):
         import logging
@@ -188,7 +189,8 @@ class BaseAgent:
                 reply = self.llm.chat(messages, **call_kwargs)
                 if reply:
                     if reply.startswith("[!]"):
-                        self.log_error(reply)
+                        err_text = reply.lstrip("[!]").strip()
+                        self.log_error(err_text)
                         return reply
                     self.step += 1
                     return reply
@@ -198,8 +200,8 @@ class BaseAgent:
             except Exception as e:
                 last_err = e
                 err_str = str(e)
-                if "blocked by" in err_str.lower() or "safety" in err_str.lower() or "filter" in err_str.lower():
-                    short_err = "blocked by safety filter"
+                if any(k in err_str.lower() for k in ("blocked by", "safety", "filter", "policy")):
+                    short_err = "Block by policy"
                 elif "timeout" in err_str.lower():
                     short_err = "timeout"
                 else:
