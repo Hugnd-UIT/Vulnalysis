@@ -60,6 +60,10 @@ class PipelineState:
                             idx += 1
         self.flows = rank(dedup(raw))
         self.index = 0
+        if raw and p.exists():
+            with open(p, "w", encoding="utf-8") as f:
+                for flow in raw:
+                    f.write(json.dumps(flow, ensure_ascii=False) + "\n")
         return len(self.flows)
 
     def next_flow(self):
