@@ -93,7 +93,7 @@ class VulnPlannerAgent(BaseAgent):
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
-                self.log_error("invalid action")
+                self.log_error("Invalid action")
                 self.messages.append({"role": "user", "content": self.error_prompt})
 
         return False

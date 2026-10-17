@@ -110,7 +110,7 @@ class Orchestrator:
     # Phase 3
     def phase_pov(self, hypothesis):
         flow_id = hypothesis.get("id") or hypothesis.get("flow_id") or self.state.flow.get("id", f"flow-{self.state.index}")
-        log.info("=== PoV generating ===")
+        log.info("=== Dynamic analyzing ===")
 
         from agents import generator, verifier
         feedback = None
@@ -134,7 +134,6 @@ class Orchestrator:
         last_verdict = None
         while not self.state.pov_exceeded():
             round_num = self.state.inc_pov()
-            log.info(f"  PoV round {round_num}/{self.state.max_pov}")
 
             # Run generator
             harness_data = self.state.harness if self.state.harness and self.state.harness.get("found") else None
@@ -192,7 +191,7 @@ class Orchestrator:
     # Phase 2
     def phase_analysis(self, taint_flow):
         flow_id = taint_flow.get("id", f"flow-{self.state.index}")
-        log.info("=== Analyzing ===")
+        log.info("=== Static analyzing ===")
 
         from agents import analyzer, planner
         prev_feedback = None
