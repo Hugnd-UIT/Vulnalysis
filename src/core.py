@@ -212,10 +212,12 @@ class Orchestrator:
                 feedback=prev_feedback,
             )
 
-            candidate = self.state.load_hypothesis(flow_id)
-            if not candidate and isinstance(analyzer_res, dict):
+            candidate = None
+            if isinstance(analyzer_res, dict):
                 candidate = analyzer_res
                 self.state.save_hypothesis(flow_id, candidate)
+            else:
+                candidate = self.state.load_hypothesis(flow_id)
 
             if not candidate:
                 candidate = {
@@ -245,16 +247,16 @@ class Orchestrator:
             decision = feedback.get("decision", "").upper()
             log.info(f"Coordinator: {decision}")
 
-            # Rejected
+            # Revise or challenge in round 1: feedback to Analyzer to demand evidence
+            if decision == "REVISE" or (decision == "REJECT" and round_num == 1):
+                prev_feedback = feedback
+                continue
+
+            # Final rejection after debate
             if decision == "REJECT":
                 self.state.update_status(flow_id, "FAILED")
                 self.state.reject(reason=json.dumps(feedback.get("issues", [])))
                 return None
-
-            # Revise
-            if decision == "REVISE":
-                prev_feedback = feedback
-                continue
 
             approved = feedback.get("approved_hypothesis") or candidate
             self.state.approve(approved)

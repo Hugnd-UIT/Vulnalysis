@@ -73,10 +73,13 @@ class VulnPlannerAgent(BaseAgent):
             # Finish
             if action == "finish":
                 extracted = self.extract_json(reply)
-                if extracted and isinstance(extracted, dict) and "decision" in extracted:
-                    self.log_action("finish")
-                    self.log(thought=thought, action="finish", observation="Coordinator completed")
-                    return extracted
+                if extracted and isinstance(extracted, dict):
+                    if "decision" not in extracted and ("issues" in extracted or "suggestions" in extracted):
+                        extracted["decision"] = "REVISE"
+                    if "decision" in extracted:
+                        self.log_action("finish")
+                        self.log(thought=thought, action="finish", observation="Coordinator completed")
+                        return extracted
                 self.log_error("Invalid json")
                 self.messages.append({"role": "user", "content": self.error_prompt})
                 continue
