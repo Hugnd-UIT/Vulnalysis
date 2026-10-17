@@ -14,12 +14,12 @@ agents:
     output-rate: 0.0
 
   repo-builder:
-    model: openai/gpt-oss-20b
+    model: openai/gpt-oss-120b
     input-rate: 0.0
     output-rate: 0.0
 
   repo-retriever:
-    model: openai/gpt-oss-20b
+    model: openai/gpt-oss-120b
     input-rate: 0.0
     output-rate: 0.0
 
