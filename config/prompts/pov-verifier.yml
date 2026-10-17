@@ -155,5 +155,5 @@ environment:
     TQDM_DISABLE: "1"
 
 model:
-  temperature: 0.0
+  temperature: 0.3
   drop_params: true
