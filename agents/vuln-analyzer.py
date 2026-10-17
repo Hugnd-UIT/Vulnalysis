@@ -23,7 +23,7 @@ class VulnAnalyzerAgent(BaseAgent):
     ):
         feedback_str = json.dumps(feedback, indent=2, ensure_ascii=False) if feedback else ""
 
-        # New analysis
+        # Feedback
         if self.messages and feedback:
             obs = self.render(
                 self.react_prompt,
@@ -60,10 +60,6 @@ class VulnAnalyzerAgent(BaseAgent):
             if action == "finish":
                 self.log(thought=thought, action="finish", observation="Analysis completed")
                 extracted = self.extract_json(reply)
-                if not extracted and hypotheses:
-                    code, content = self.execute(f"cat {hypotheses} 2>/dev/null")
-                    if content:
-                        extracted = self.extract_json(content)
                 return extracted or True
 
             # Execute
@@ -81,13 +77,6 @@ class VulnAnalyzerAgent(BaseAgent):
             else:
                 # Error
                 self.messages.append({"role": "user", "content": self.error_prompt})
-
-        if hypotheses:
-            code, content = self.execute(f"cat {hypotheses} 2>/dev/null")
-            if content:
-                extracted = self.extract_json(content)
-                if extracted:
-                    return extracted
 
         return False
 

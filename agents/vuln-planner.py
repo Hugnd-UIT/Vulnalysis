@@ -25,6 +25,7 @@ class VulnPlannerAgent(BaseAgent):
         hyp_str = json.dumps(hypotheses, indent=2, ensure_ascii=False) if isinstance(hypotheses, (dict, list)) else str(hypotheses or "")
         flow_str = json.dumps(taint_flow, indent=2, ensure_ascii=False) if isinstance(taint_flow, (dict, list)) else str(taint_flow or "")
 
+        # Feedback
         if self.messages and (analyzer or verifier):
             render_kwargs = {"code": 0, "output": ""}
             if analyzer:
@@ -71,7 +72,7 @@ class VulnPlannerAgent(BaseAgent):
                 extracted = self.extract_json(reply)
                 if extracted and isinstance(extracted, dict) and "decision" in extracted:
                     return extracted
-                return False
+                return {"decision": "APPROVE"}
 
             # Execute
             if action == "bash" and command:

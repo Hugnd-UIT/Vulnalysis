@@ -13,6 +13,7 @@ class RepoBuilderAgent(BaseAgent):
             config_path=config_path,
             provider_cls=provider_cls,
         )
+        self.messages = []
 
     def manifest(self, repo_path):
         target = Path(repo_path).resolve()
@@ -44,7 +45,7 @@ class RepoBuilderAgent(BaseAgent):
             manifests=", ".join(manifests) if manifests else "none detected",
         )
 
-        messages = [
+        self.messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": initial_task},
         ]
@@ -52,14 +53,14 @@ class RepoBuilderAgent(BaseAgent):
         # ReAct loop
         while not self.is_step_exceeded() and not self.is_cost_exceeded():
             # Call llm
-            reply = self.call(messages)
+            reply = self.call(self.messages)
             thought, action, command = self.parse(reply)
 
             # Thought
-            messages.append({"role": "assistant", "content": reply})
+            self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
-            if action == "finish" or (not action and "finish" in reply.lower()):
+            if action == "finish":
                 self.log(thought=thought, action="finish", observation="Repo builder completed")
                 extracted = self.extract_json(reply)
                 return extracted or True
@@ -75,10 +76,10 @@ class RepoBuilderAgent(BaseAgent):
                 obs_text = self.render(self.react_prompt, code=code, output=output)
                 if self.step >= self.step_limit - 1:
                     obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
-                messages.append({"role": "user", "content": obs_text})
+                self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
-                messages.append({"role": "user", "content": self.error_prompt})
+                self.messages.append({"role": "user", "content": self.error_prompt})
 
         return False
 

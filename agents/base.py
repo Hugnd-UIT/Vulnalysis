@@ -15,6 +15,7 @@ class BaseAgent:
         self.sandbox = sandbox
         self.step = 0
         self.memory = Memory()
+        self.messages = []
 
         # Setup config
         self.prompt_cfg = self.prompt()
@@ -122,8 +123,6 @@ class BaseAgent:
         elif re.search(r"^\s*finish\s*$", text, re.MULTILINE | re.IGNORECASE) or re.search(r"(?:ACTION|Action)[\s:\-]+finish\b", text, re.IGNORECASE) or re.search(r"\bfinish\s*$", text.strip(), re.IGNORECASE):
             action = "finish"
         elif self.extract_json(text):
-            action = "finish"
-        elif "finish" in text.lower() and not bash_match:
             action = "finish"
 
         return thought, action, command

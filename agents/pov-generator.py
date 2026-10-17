@@ -28,7 +28,7 @@ class PovGeneratorAgent(BaseAgent):
         pov_result = pov_result or f"/outputs/{flow_id}/results.json"
         feedback_str = json.dumps(feedback, indent=2, ensure_ascii=False) if feedback else ""
 
-        # New execution
+        # Feedback
         if self.messages and feedback:
             obs = self.render(
                 self.react_prompt,
@@ -85,10 +85,6 @@ class PovGeneratorAgent(BaseAgent):
             else:
                 # Error
                 self.messages.append({"role": "user", "content": self.error_prompt})
-
-        code, content = self.execute(f"test -s {pov_script} && echo exists")
-        if "exists" in content:
-            return True
 
         return False
 
