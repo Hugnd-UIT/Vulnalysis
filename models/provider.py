@@ -58,13 +58,19 @@ class OpenAI:
         )
         if not response or not getattr(response, "choices", None):
             return ""
-        msg = response.choices[0].message
+        choice = response.choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+        msg = choice.message
         content = msg.content or ""
         reasoning = getattr(msg, "reasoning_content", None) or ""
         if reasoning and not content.startswith("THOUGHT:"):
             content = f"THOUGHT: {reasoning}\n\n{content}"
         elif not content and reasoning:
             content = reasoning
+
+        if not content and finish_reason in ("content_filter", "safety"):
+            return f"[!] Blocked by safety policy: {finish_reason}"
+
         return content
 
     def __call__(self, messages, **kwargs):

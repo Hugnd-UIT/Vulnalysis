@@ -109,26 +109,32 @@ class RepoRetrieverAgent(BaseAgent):
             thought, action, command = self.parse(reply)
 
             # Thought
+            self.log_thought(thought)
             self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
             if action == "finish":
-                self.log(thought=thought, action="finish", observation="Repo retriever completed")
                 extracted = self.extract_json(reply)
                 code, _ = self.execute(f"test -s {taint_flows}")
                 if code == 0:
+                    self.log_action("finish")
+                    self.log(thought=thought, action="finish", observation="Repo retriever completed")
                     return taint_flows
                 if extracted:
                     items = extracted if isinstance(extracted, list) else [extracted]
                     lines = "\n".join(json.dumps(item) for item in items if isinstance(item, dict))
                     if lines:
                         self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines}\nEOF")
+                        self.log_action("finish")
+                        self.log(thought=thought, action="finish", observation="Repo retriever completed")
                         return taint_flows
+                self.log_error("Invalid json")
                 self.messages.append({"role": "user", "content": self.error_prompt})
                 continue
 
             # Execute
             if action == "bash" and command:
+                self.log_action("bash", command)
                 code, output = self.execute(command)
 
                 # Log
@@ -141,6 +147,7 @@ class RepoRetrieverAgent(BaseAgent):
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
+                self.log_error("Invalid action")
                 self.messages.append({"role": "user", "content": self.error_prompt})
 
         return taint_flows

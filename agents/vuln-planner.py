@@ -64,19 +64,23 @@ class VulnPlannerAgent(BaseAgent):
             thought, action, command = self.parse(reply)
 
             # Thought
+            self.log_thought(thought)
             self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
             if action == "finish":
-                self.log(thought=thought, action="finish", observation="Coordinator completed")
                 extracted = self.extract_json(reply)
                 if extracted and isinstance(extracted, dict) and "decision" in extracted:
+                    self.log_action("finish")
+                    self.log(thought=thought, action="finish", observation="Coordinator completed")
                     return extracted
+                self.log_error("Invalid json")
                 self.messages.append({"role": "user", "content": self.error_prompt})
                 continue
 
             # Execute
             if action == "bash" and command:
+                self.log_action("bash", command)
                 code, output = self.execute(command)
 
                 # Log
@@ -89,6 +93,7 @@ class VulnPlannerAgent(BaseAgent):
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
+                self.log_error("invalid action")
                 self.messages.append({"role": "user", "content": self.error_prompt})
 
         return False

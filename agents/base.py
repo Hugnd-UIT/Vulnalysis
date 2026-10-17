@@ -145,14 +145,37 @@ class BaseAgent:
                 pass
         return None
 
+    # Logging helpers
+    def log_thought(self, thought):
+        if thought:
+            import logging
+            logging.getLogger("vulnalysis").info(f"[{self.name}] Thought: {str(thought).strip().replace(chr(10), ' ')}")
+
+    def log_action(self, action, command=""):
+        import logging
+        logger = logging.getLogger("vulnalysis")
+        cmd = str(command or "").strip().replace("\n", " ")
+        if action == "bash":
+            logger.info(f"  [{self.name}] Action: bash `{cmd}`")
+        elif action == "finish":
+            logger.info(f"  [{self.name}] Action: finish")
+        elif action:
+            logger.info(f"  [{self.name}] Action: {action}")
+
+    def log_error(self, msg):
+        import logging
+        logging.getLogger("vulnalysis").warning(f"  [{self.name}] Error: {msg}")
+
     # Call llm
     def call(self, messages, **kwargs):
         # Check budget limit
         if self.is_cost_exceeded():
+            self.log_error("cost limit exceeded")
             return "[!] Cost limit exceeded"
 
         # Check step limit
         if self.is_step_exceeded():
+            self.log_error("step limit exceeded")
             return "[!] Step limit exceeded"
 
         call_kwargs = dict(kwargs)
@@ -164,44 +187,37 @@ class BaseAgent:
             try:
                 reply = self.llm.chat(messages, **call_kwargs)
                 if reply:
+                    if reply.startswith("[!]"):
+                        self.log_error(reply)
+                        return reply
                     self.step += 1
                     return reply
                 last_err = "Empty response"
+                self.log_error(f"empty response (attempt {attempt+1}/5)")
                 time.sleep(1 + random.random())
             except Exception as e:
                 last_err = e
+                err_str = str(e)
+                if "blocked by" in err_str.lower() or "safety" in err_str.lower() or "filter" in err_str.lower():
+                    short_err = "blocked by safety filter"
+                elif "timeout" in err_str.lower():
+                    short_err = "timeout"
+                else:
+                    short_err = err_str.split("\n")[0][:80]
+                self.log_error(f"{short_err} (attempt {attempt+1}/5)")
                 wait = min(2 ** attempt, 20) + random.random()
                 if messages and isinstance(messages[-1], dict) and "content" in messages[-1]:
                     messages[-1]["content"] += " "
                 time.sleep(wait)
 
-        return f"[!] LLM Exception: {last_err}"
+        err_msg = f"[!] LLM Exception: {last_err}"
+        self.log_error(err_msg)
+        return err_msg
 
     # Log step
     def log(self, *args, **kwargs):
         data = args[0] if (args and isinstance(args[0], dict)) else kwargs
         entry = self.memory.add(**data) if (args and isinstance(args[0], dict)) else self.memory.add(*args, **kwargs)
-
-        import logging
-        logger = logging.getLogger("vulnalysis")
-        action = data.get("action", "")
-        cmd = str(data.get("command", "") or "").strip().replace("\n", " ")
-        thought = str(data.get("thought", "") or "").strip().replace("\n", " ")
-        obs = str(data.get("observation", "") or "").strip().replace("\n", " ")
-
-        if action == "finish":
-            if thought:
-                logger.info(f"[{self.name}] Thought: {thought}")
-            logger.info(f"  [{self.name}] Action: {obs or 'Completed'}")
-        elif action == "bash":
-            if thought:
-                logger.info(f"[{self.name}] Thought: {thought}")
-            logger.info(f"  [{self.name}] Action: bash `{cmd}`")
-        elif action:
-            if thought:
-                logger.info(f"[{self.name}] Thought: {thought}")
-            logger.info(f"  [{self.name}] Action: {action}")
-
         return entry
 
 
