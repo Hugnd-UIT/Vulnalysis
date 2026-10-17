@@ -68,7 +68,15 @@ class PovGeneratorAgent(BaseAgent):
             if action == "finish":
                 self.log(thought=thought, action="finish", observation="PoV generator completed")
                 extracted = self.extract_json(reply)
-                return extracted or True
+                code, _ = self.execute(f"test -s {pov_script}")
+                if not extracted and pov_result:
+                    _, content = self.execute(f"cat {pov_result} 2>/dev/null")
+                    if content:
+                        extracted = self.extract_json(content)
+                if (extracted and isinstance(extracted, dict)) or code == 0:
+                    return extracted or True
+                self.messages.append({"role": "user", "content": self.error_prompt})
+                continue
 
             # Execute
             if action == "bash" and command:

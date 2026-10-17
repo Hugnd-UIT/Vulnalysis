@@ -83,7 +83,7 @@ class RepoRetrieverAgent(BaseAgent):
         edges_count = len(graph.get("edges", []))
         call_graph_file = graph_path or "/outputs/call-graph.json"
         call_flows_file = flows_path or "/outputs/call-flows.jsonl"
-        taint_flows_file = taint_path or "/outputs/taint-flows.jsonl"
+        taint_flows = taint_path or "/outputs/taint-flows.jsonl"
 
         # Build prompt
         initial_task = self.render(
@@ -94,7 +94,7 @@ class RepoRetrieverAgent(BaseAgent):
             edges=edges_count,
             call_graph=str(call_graph_file),
             call_flows=str(call_flows_file),
-            taint_flows=str(taint_flows_file),
+            taint_flows=str(taint_flows),
         )
 
         self.messages = [
@@ -115,7 +115,17 @@ class RepoRetrieverAgent(BaseAgent):
             if action == "finish":
                 self.log(thought=thought, action="finish", observation="Repo retriever completed")
                 extracted = self.extract_json(reply)
-                return taint_flows_file
+                code, _ = self.execute(f"test -s {taint_flows}")
+                if code == 0:
+                    return taint_flows
+                if extracted:
+                    items = extracted if isinstance(extracted, list) else [extracted]
+                    lines = "\n".join(json.dumps(item) for item in items if isinstance(item, dict))
+                    if lines:
+                        self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines}\nEOF")
+                        return taint_flows
+                self.messages.append({"role": "user", "content": self.error_prompt})
+                continue
 
             # Execute
             if action == "bash" and command:
@@ -133,7 +143,7 @@ class RepoRetrieverAgent(BaseAgent):
                 # Error
                 self.messages.append({"role": "user", "content": self.error_prompt})
 
-        return taint_flows_file
+        return taint_flows
 
 
 __all__ = ["RepoRetrieverAgent"]

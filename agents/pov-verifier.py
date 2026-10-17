@@ -64,7 +64,10 @@ class PovVerifierAgent(BaseAgent):
             if action == "finish":
                 self.log(thought=thought, action="finish", observation="PoV verifier completed")
                 extracted = self.extract_json(reply)
-                return extracted or True
+                if extracted and isinstance(extracted, dict):
+                    return extracted
+                self.messages.append({"role": "user", "content": self.error_prompt})
+                continue
 
             # Execute
             if action == "bash" and command:
