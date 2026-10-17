@@ -1,34 +1,34 @@
 provider:
-  url: http://localhost:20128/v1
-  key: sk-7412ef646295bcc4-8xzjam-751992f4
+  url: https://api.xkiro.com/v1
+  key: sk-xt-a2f6db5f38bf8a353b4af47ed16d12d1c06790b2d844c904
 
 agents:
   vuln-planner:
-    model: ag/gemini-3.8-flash-high
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/mistral-large-2512
+    input-rate: 2.0
+    output-rate: 6.0
 
   vuln-analyzer:
-    model: ag/gemini-3.8-flash-medium
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/mistral-large-2512
+    input-rate: 2.0
+    output-rate: 6.0
 
   repo-builder:
-    model: ag/gemini-3.8-flash-medium
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/codestral-2508
+    input-rate: 0.3
+    output-rate: 0.9
 
   repo-retriever:
-    model: ag/gemini-3.8-flash-low
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/codestral-2508
+    input-rate: 0.3
+    output-rate: 0.9
 
   pov-generator:
-    model: ag/gemini-3.8-flash-high
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/codestral-2508
+    input-rate: 0.3
+    output-rate: 0.9
 
   pov-verifier:
-    model: ag/gemini-3.8-flash-medium
-    input-rate: 0.75
-    output-rate: 3.75
+    model: mistralai/mistral-large-2512
+    input-rate: 2.0
+    output-rate: 6.0

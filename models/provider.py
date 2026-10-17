@@ -44,11 +44,12 @@ class OpenAI:
 
     def chat(self, messages, **kwargs):
         call_kwargs = dict(kwargs)
-        try:
-            from utils import apply
-            call_kwargs = apply(call_kwargs)
-        except Exception:
-            pass
+        if self.url and ("google" in self.url or "localhost" in self.url):
+            try:
+                from utils import apply
+                call_kwargs = apply(call_kwargs)
+            except Exception:
+                pass
 
         # Send request
         response = self.client.chat.completions.create(

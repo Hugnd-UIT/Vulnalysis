@@ -54,6 +54,8 @@ class RepoBuilderAgent(BaseAgent):
         while not self.is_step_exceeded() and not self.is_cost_exceeded():
             # Call llm
             reply = self.call(self.messages)
+            if not reply or reply.startswith("[!]"):
+                break
             thought, action, command = self.parse(reply)
 
             # Thought
