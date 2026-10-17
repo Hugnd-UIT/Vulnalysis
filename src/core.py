@@ -243,7 +243,7 @@ class Orchestrator:
                 break
 
             decision = feedback.get("decision", "").upper()
-            log.info(f"Coordinator decision: {decision}")
+            log.info(f"Coordinator: {decision}")
 
             # Rejected
             if decision == "REJECT":
@@ -279,7 +279,7 @@ class Orchestrator:
                     coord_decision = "CONFIRMED"
                     coord_verdict["decision"] = "CONFIRMED"
 
-            log.info(f"Coordinator decision: {coord_decision}")
+            log.info(f"Coordinator: {coord_decision}")
 
             # Coordinator confirms
             if coord_decision in ("CONFIRMED", "APPROVE"):

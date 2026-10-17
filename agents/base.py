@@ -134,7 +134,7 @@ class BaseAgent:
     def extract_json(self, text):
         if not text:
             return None
-        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        match = re.search(r"```(?:json|finish)?\s*(\{[\s\S]*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
         if match:
             try:
                 return json.loads(match.group(1))

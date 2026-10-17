@@ -29,8 +29,8 @@ def format_record(record):
         msg = f"{BOLD_CYAN}{raw}{RESET}"
     elif raw.startswith(">>> Processing:"):
         msg = f"{YELLOW}{raw}{RESET}"
-    elif "Coordinator decision:" in raw:
-        parts = raw.split("Coordinator decision:", 1)
+    elif "Coordinator:" in raw:
+        parts = raw.split("Coordinator: ", 1)
         dec = parts[1].strip()
         if dec in ("CONFIRMED", "APPROVE"):
             c_dec = f"{GREEN}{dec}{RESET}"
@@ -40,7 +40,7 @@ def format_record(record):
             c_dec = f"{RED}{dec}{RESET}"
         else:
             c_dec = f"{RED}(none){RESET}"
-        msg = f"{parts[0]}Coordinator decision: {c_dec}"
+        msg = f"{parts[0]}Coordinator: {c_dec}"
     elif "Flow" in raw and "confirmed" in raw:
         msg = f"{GREEN}{raw}{RESET}"
     elif "Flow" in raw and "unconfirmed" in raw:

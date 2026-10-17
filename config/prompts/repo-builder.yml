@@ -12,6 +12,7 @@ agent:
     ## Rules - STRICT
     - Use `bash` to inspect repository structure, resolve dependencies, and build the target.
     - Use `finish` ONLY when the target project has been built and confirmed runnable.
+    - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
     - Target repository: {{repo}}

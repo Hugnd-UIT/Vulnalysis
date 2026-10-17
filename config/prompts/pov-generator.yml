@@ -12,6 +12,7 @@ agent:
     ## Rules - STRICT
     - Use `bash` to craft reproduction script at {{pov_script}} and execute it inside sandbox.
     - Use `finish` ONLY after execution results are recorded into {{pov_result}}.
+    - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
     - Target repository: {{repo}}

@@ -12,6 +12,7 @@ agent:
     ## Rules - STRICT
     - Use `bash` to inspect reproduction script, execution output, and side-effect markers.
     - Use `finish` to output feedback to PoV or report to Planner as structured JSON.
+    - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
     - Target repository: {{repo}}
