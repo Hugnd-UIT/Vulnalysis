@@ -98,13 +98,15 @@ def walk(
     nodes: Dict[str, dict],
     adj: Dict[str, List[dict]],
     roots: Set[str],
-    limit: int | None = None
+    limit: int | None = 5,
+    max_depth: int = 6,
+    max_total_paths: int = 1000
 ) -> List[dict]:
     paths: List[dict] = []
     seen: Set[str] = set()
 
     def record(stack: List[str], cycle: bool = False):
-        if len(stack) < 2:
+        if len(stack) < 2 or len(paths) >= max_total_paths:
             return
 
         sig = " -> ".join(stack)
@@ -135,7 +137,12 @@ def walk(
         bucket.append(item)
 
     def dfs(curr: str, stack: List[str], active: Set[str]):
+        if len(paths) >= max_total_paths:
+            return
         if limit is not None and len(bucket) >= limit:
+            return
+        if len(stack) >= max_depth:
+            record(stack, cycle=False)
             return
 
         children = adj.get(curr, [])
@@ -144,7 +151,9 @@ def walk(
             return
 
         valid = False
-        for edge in children:
+        for edge in children[:10]:
+            if len(paths) >= max_total_paths:
+                return
             tgt = edge["target"]
 
             if tgt in active:
@@ -165,6 +174,8 @@ def walk(
             record(stack, cycle=False)
 
     for root in sorted(roots):
+        if len(paths) >= max_total_paths:
+            break
         bucket: List[dict] = []
         dfs(root, [root], {root})
 
