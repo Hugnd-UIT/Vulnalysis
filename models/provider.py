@@ -56,6 +56,13 @@ class OpenAI:
             messages=messages,
             **call_kwargs
         )
+        resp_extra = getattr(response, "response", {}) or {}
+        feedback = resp_extra.get("promptFeedback", {}) if isinstance(resp_extra, dict) else {}
+        if feedback.get("blockReason"):
+            reason = feedback.get("blockReason")
+            msg = feedback.get("blockReasonMessage") or "Blocked by Gemini filter"
+            return f"[!] Blocked by Gemini policy ({reason}): {msg}"
+
         if not response or not getattr(response, "choices", None):
             return ""
         choice = response.choices[0]

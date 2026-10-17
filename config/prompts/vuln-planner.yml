@@ -7,6 +7,7 @@ agent:
     You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
+    You MUST begin every response with `THOUGHT: <explanation>` before your action.
 
   user-prompt: |
     ## Rules - STRICT

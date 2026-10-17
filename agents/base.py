@@ -147,9 +147,9 @@ class BaseAgent:
 
     # Logging helpers
     def log_thought(self, thought):
-        if thought:
-            import logging
-            logging.getLogger("vulnalysis").info(f"[{self.name}] Thought: {str(thought).strip().replace(chr(10), ' ')}")
+        import logging
+        text = str(thought).strip().replace(chr(10), " ") if thought else "[Analyzing next action]"
+        logging.getLogger("vulnalysis").info(f"[{self.name}] Thought: {text}")
 
     def log_action(self, action, command=""):
         import logging
@@ -204,7 +204,7 @@ class BaseAgent:
                     short_err = "timeout"
                 else:
                     short_err = err_str.split("\n")[0][:80]
-                self.log_error(f"{short_err} (attempt {attempt+1}/5)")
+                self.log_error(f"{short_err}")
                 wait = min(2 ** attempt, 20) + random.random()
                 if messages and isinstance(messages[-1], dict) and "content" in messages[-1]:
                     messages[-1]["content"] += " "
