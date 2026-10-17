@@ -8,6 +8,16 @@ from src.state import PipelineState
 from docker.sandbox import init as sandbox_init
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s", datefmt="%H:%M:%S")
+for lib in ["httpx", "httpx2", "httpcore", "httpcore2", "openai", "urllib3"]:
+    logging.getLogger(lib).setLevel(logging.WARNING)
+
+class HttpFilter(logging.Filter):
+    def filter(self, record):
+        return "HTTP Request:" not in record.getMessage()
+
+for handler in logging.root.handlers:
+    handler.addFilter(HttpFilter())
+
 log = logging.getLogger("vulnalysis")
 
 
@@ -18,7 +28,7 @@ class Orchestrator:
         self.config_path = config_path
         self.state = PipelineState(self.outputs_path)
 
-        # Provider
+        # Provider config
         if provider_cls is None:
             from models.provider import OpenAI
             self.provider_cls = OpenAI
@@ -32,14 +42,21 @@ class Orchestrator:
 
     # Init sandbox
     def init_sandbox(self):
-        log.info("Initializing sandbox...")
         self.container = sandbox_init(repo_path=str(self.repo), outputs_path=str(self.outputs_path))
-        log.info(f"Sandbox ready: {self.container.name} [{self.container.status}]")
+        log.info(f"{self.container.name} [{self.container.status}]\n")
         return self.container
 
-    # Phase 1: Preprocessing
+    # Phase 1
     def phase_prep(self):
         log.info("=== Preprocessing ===")
+
+        try:
+            import graphify
+            graph_out = self.outputs_path / "call-graph.json"
+            flows_out = self.outputs_path / "call-flows.jsonl"
+            graphify.callgraph(str(self.repo), str(graph_out), flow=str(flows_out))
+        except Exception as e:
+            log.warning(f"Graphify generation skipped: {e}")
 
         retriever_result = [None]
         builder_result = [None]
@@ -61,7 +78,7 @@ class Orchestrator:
                 flows_path=flows_path,
                 taint_path=taint_path,
             )
-            log.info(f"Retriever finished: {retriever_result[0]}")
+            log.info(f"Repo retriever finished: {retriever_result[0]}\n")
 
         # Builder thread
         def run_builder():
@@ -72,7 +89,7 @@ class Orchestrator:
                 provider_cls=self.provider_cls,
             )
             builder_result[0] = agent.run(self.repo_container)
-            log.info(f"Builder finished: {builder_result[0]}")
+            log.info(f"Repo builder finished: {builder_result[0]}\n")
 
         t_retriever = threading.Thread(target=run_retriever, name="retriever")
         t_builder = threading.Thread(target=run_builder, name="builder")
@@ -87,12 +104,10 @@ class Orchestrator:
         import importlib
         fuzz_mod = importlib.import_module("src.fuzz-harness")
         self.state.harness = fuzz_mod.check(self.repo, self.outputs_path)
-        if self.state.harness.get("found"):
-            log.info(f"Discovered {self.state.harness['count']} harness targets")
 
         return retriever_result[0], builder_result[0]
 
-    # Phase 3: PoV Inner Loop (Generator <-> Verifier)
+    # Phase 3
     def phase_pov(self, hypothesis):
         flow_id = hypothesis.get("id") or hypothesis.get("flow_id") or self.state.flow.get("id", f"flow-{self.state.index}")
         log.info("=== PoV generating ===")
@@ -132,7 +147,6 @@ class Orchestrator:
                 harness=harness_data,
             )
 
-            # Load script code and results
             script_code = self.state.load_script(flow_id)
             pov_result = self.state.load_results(flow_id) or {}
 
@@ -167,7 +181,6 @@ class Orchestrator:
             decision = verdict.get("decision", "").upper()
             log.info(f"Verifier decision: {decision}")
 
-            # Return verdict to Coordinator
             if decision in ("CONFIRMED", "FAILED"):
                 return verdict
 
@@ -176,7 +189,7 @@ class Orchestrator:
 
         return last_verdict or {"decision": "FAILED", "reason": "PoV rounds exhausted"}
 
-    # Phase 2: Closed-Loop Coordination (Analyzer <-> Planner <-> PoV <-> Planner)
+    # Phase 2
     def phase_analysis(self, taint_flow):
         flow_id = taint_flow.get("id", f"flow-{self.state.index}")
         log.info("=== Analyzing ===")
@@ -200,9 +213,8 @@ class Orchestrator:
 
         while not self.state.debate_exceeded():
             round_num = self.state.inc_debate()
-            log.info(f"  Debate round {round_num}/{self.state.max_debate}")
 
-            # 1. Run analyzer
+            # Run analyzer
             analyzer_res = analyzer_agent.run(
                 self.repo_container,
                 taint_flow,
@@ -216,11 +228,19 @@ class Orchestrator:
                 self.state.save_hypothesis(flow_id, candidate)
 
             if not candidate:
-                log.warning("Analyzer produced no hypothesis")
-                break
+                candidate = {
+                    "id": flow_id,
+                    "title": taint_flow.get("title", f"Flow {flow_id}"),
+                    "cwe": taint_flow.get("cwe") or ["CWE-UNKNOWN"],
+                    "description": "Analyzer concluded investigation without formulating a vulnerability hypothesis",
+                    "source": taint_flow.get("source", {}),
+                    "sink": taint_flow.get("sink", {}),
+                    "flow": {"chain": taint_flow.get("chain", [])},
+                    "status": "UNCONFIRMED",
+                }
+                self.state.save_hypothesis(flow_id, candidate)
             self.state.set_candidate(candidate)
 
-            # 2. Run coordinator to audit candidate
             feedback = planner_agent.run(
                 self.repo_container,
                 candidate,
@@ -288,7 +308,7 @@ class Orchestrator:
         self.state.reject(reason="Debate rounds exhausted")
         return None
 
-    # Phase 4: Reporting
+    # Phase 4
     def phase_report(self):
         log.info("=== Reporting ===")
 
@@ -378,12 +398,10 @@ class Orchestrator:
         # Init sandbox
         self.init_sandbox()
 
-        # Phase 1
         taint_path, build_ok = self.phase_prep()
 
         # Load taint flows
         count = self.state.load_flows()
-        log.info(f"Loaded {count} taint flows")
 
         if count == 0:
             log.warning("No taint flows found!")
@@ -396,10 +414,9 @@ class Orchestrator:
 
             flow_id = flow.get("id", f"flow-{self.state.index}")
             score_val = self.state.score(flow)
-            log.info(f"\n>>> Processing taint flow: {flow_id} - Score: {score_val}")
+            log.info(f"\n>>> Processing: {flow_id} - Score: {score_val}")
 
             try:
-                # Closed loop (Phase 2 & 3)
                 verdict = self.phase_analysis(flow)
                 if verdict:
                     log.info(f"  Flow {flow_id}: confirmed")
@@ -410,7 +427,6 @@ class Orchestrator:
                 self.state.reject(reason=f"Pipeline exception: {e}")
                 continue
 
-        # Phase 4
         report = self.phase_report()
 
         elapsed = time.time() - start

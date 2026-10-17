@@ -57,9 +57,13 @@ class VulnAnalyzerAgent(BaseAgent):
             self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
-            if action == "finish" or (not action and "finish" in reply.lower()):
+            if action == "finish":
                 self.log(thought=thought, action="finish", observation="Analysis completed")
                 extracted = self.extract_json(reply)
+                if not extracted and hypotheses:
+                    code, content = self.execute(f"cat {hypotheses} 2>/dev/null")
+                    if content:
+                        extracted = self.extract_json(content)
                 return extracted or True
 
             # Execute
@@ -71,10 +75,19 @@ class VulnAnalyzerAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
+                if self.step >= self.step_limit - 1:
+                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
                 self.messages.append({"role": "user", "content": self.error_prompt})
+
+        if hypotheses:
+            code, content = self.execute(f"cat {hypotheses} 2>/dev/null")
+            if content:
+                extracted = self.extract_json(content)
+                if extracted:
+                    return extracted
 
         return False
 

@@ -49,10 +49,15 @@ class OpenAI:
             messages=messages,
             **kwargs
         )
+        if not response or not getattr(response, "choices", None):
+            return ""
         msg = response.choices[0].message
         content = msg.content or ""
-        if not content and hasattr(msg, "reasoning_content") and msg.reasoning_content:
-            content = msg.reasoning_content
+        reasoning = getattr(msg, "reasoning_content", None) or ""
+        if reasoning and not content.startswith("THOUGHT:"):
+            content = f"THOUGHT: {reasoning}\n\n{content}"
+        elif not content and reasoning:
+            content = reasoning
         return content
 
     def __call__(self, messages, **kwargs):

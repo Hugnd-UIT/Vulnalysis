@@ -65,7 +65,7 @@ class PovGeneratorAgent(BaseAgent):
             self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
-            if action == "finish" or (not action and "finish" in reply.lower()):
+            if action == "finish":
                 self.log(thought=thought, action="finish", observation="PoV generator completed")
                 extracted = self.extract_json(reply)
                 return extracted or True
@@ -79,10 +79,16 @@ class PovGeneratorAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
+                if self.step >= self.step_limit - 1:
+                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
                 self.messages.append({"role": "user", "content": self.error_prompt})
+
+        code, content = self.execute(f"test -s {pov_script} && echo exists")
+        if "exists" in content:
+            return True
 
         return False
 

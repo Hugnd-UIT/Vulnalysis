@@ -11,6 +11,7 @@ agent:
     ## Rules - STRICT
     - Use `bash` to trace source code files along the taint flow slice.
     - Use `finish` ONLY when hypothesis JSON is written to {{hypotheses}}.
+    - Write the hypothesis JSON to {{hypotheses}} using `cat << 'EOF' > {{hypotheses}}`.
 
     ## Context
     - Target repository: {{repo}}
@@ -169,7 +170,7 @@ agent:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
-  step-limit: 200
+  step-limit: 15
   cost-limit: 15
 
 environment:

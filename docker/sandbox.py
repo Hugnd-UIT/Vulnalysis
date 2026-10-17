@@ -34,7 +34,10 @@ def init(repo_path=None, outputs_path="outputs"):
 	if found:
 		container = found[0]
 		binds = container.attrs.get('HostConfig', {}).get('Binds') or []
-		has_all = all(any(v['bind'] in b for b in binds) for v in volumes.values())
+		has_all = all(
+			any(str(Path(host_p)).lower() in b.lower() and v['bind'] in b for b in binds)
+			for host_p, v in volumes.items()
+		)
 		if volumes and not has_all:
 			try:
 				container.stop()
@@ -83,6 +86,7 @@ def init(repo_path=None, outputs_path="outputs"):
 
 	if container.status != 'running':
 		container.start()
+		container.reload()
 
 		# Start TUN if needed
 		container.exec_run('/bin/bash -c "mkdir -p /dev/net && mknod /dev/net/tun c 10 200 && chmod 600 /dev/net/tun"')

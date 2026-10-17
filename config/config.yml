@@ -5,30 +5,30 @@ provider:
 agents:
   vuln-planner:
     model: ag/gemini-3.8-flash-high
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75
 
   vuln-analyzer:
     model: ag/gemini-3.8-flash-medium
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75
 
   repo-builder:
     model: ag/gemini-3.8-flash-medium
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75
 
   repo-retriever:
     model: ag/gemini-3.8-flash-low
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75
 
   pov-generator:
     model: ag/gemini-3.8-flash-high
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75
 
   pov-verifier:
     model: ag/gemini-3.8-flash-medium
-    input-rate:
-    output-rate:
+    input-rate: 0.75
+    output-rate: 3.75

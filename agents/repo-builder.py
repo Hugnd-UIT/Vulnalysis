@@ -73,6 +73,8 @@ class RepoBuilderAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
+                if self.step >= self.step_limit - 1:
+                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
                 messages.append({"role": "user", "content": obs_text})
             else:
                 # Error

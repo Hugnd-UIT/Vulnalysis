@@ -1,1 +1,5 @@
 graphify-out/
+outputs/
+__pycache__/
+
+benchmark/

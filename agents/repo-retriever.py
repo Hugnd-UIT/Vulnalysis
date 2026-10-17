@@ -61,6 +61,8 @@ class RepoRetrieverAgent(BaseAgent):
     def load_graph(self, repo_path, graph_path=None):
         
         path = Path(graph_path) if graph_path else Path("outputs/call-graph.json")
+        if not path.exists():
+            path = Path("outputs/call-graph.json")
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -124,6 +126,8 @@ class RepoRetrieverAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
+                if self.step >= self.step_limit - 1:
+                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
                 messages.append({"role": "user", "content": obs_text})
             else:
                 # Error

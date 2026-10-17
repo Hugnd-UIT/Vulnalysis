@@ -69,9 +69,11 @@ class BaseAgent:
             return -1, "Sandbox not initialized"
 
         # Run command in sandbox
-        t = timeout or self.timeout
+        t = timeout or min(self.timeout, 30)
         try:
-            cmd = ["/bin/bash", "-c", command]
+            import shlex
+            wrapped = f"timeout {t} bash -c {shlex.quote(command)} < /dev/null"
+            cmd = ["/bin/bash", "-c", wrapped]
             res = self.sandbox.exec_run(cmd, stdout=True, stderr=True)
             output = res.output.decode("utf-8", errors="ignore") if isinstance(res.output, bytes) else str(res.output or "")
             return res.exit_code, output
@@ -88,23 +90,41 @@ class BaseAgent:
             return thought, action, command
 
         # Extract thought
-        thought_match = re.search(r"THOUGHT[\s:\-]+(.*?)(?=(```|bash|finish|$))", text, re.DOTALL | re.IGNORECASE)
-        if thought_match:
-            thought = thought_match.group(1).strip()
+        m = re.search(r"(?:THOUGHT|Thinking|Reasoning)[\s:\-]+(.*?)(?=(```|\n\s*(?:ACTION|Action)|\Z))", text, re.DOTALL | re.IGNORECASE)
+        if m and m.group(1).strip():
+            thought = m.group(1).strip()
+        else:
+            thought = text.split("```")[0].strip() if "```" in text else ""
+            if not thought and "```" in text:
+                parts = text.split("```")
+                if len(parts) >= 3 and parts[-1].strip():
+                    thought = parts[-1].strip()
+
+        thought = re.sub(r"^#+\s*(?:Thinking|Thought|Reasoning)[\s:\-]*", "", thought, flags=re.IGNORECASE).strip()
+        thought = re.sub(r"\n\s*(?:ACTION|Action)[\s:\-]+.*$", "", thought, flags=re.IGNORECASE).strip()
 
         # Extract action
-        is_finish = re.search(r"^\s*finish\b", text, re.MULTILINE | re.IGNORECASE) or ("finish" in text.lower() and not re.search(r"```(?:bash|sh)\b", text, re.IGNORECASE))
-        if is_finish:
+        bash_match = re.search(r"```(?:bash|sh|shell)(?:[ \t\r\n]+)(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+        if not bash_match:
+            generic = re.search(r"```\s*((?:#!\/bin\/bash|\$|cat|grep|ls|find|gcc|clang|make|python3?|curl|echo|head|tail|mkdir|cd|\.\/)[\s\S]*?)\s*```", text, re.DOTALL)
+            if generic:
+                bash_match = generic
+        if not bash_match and re.search(r"(?:ACTION|Action)[\s:\-]+(?:bash|shell)\b", text, re.IGNORECASE):
+            any_block = re.search(r"```[a-zA-Z0-9_\-]*\s*(.*?)\s*```", text, re.DOTALL)
+            if any_block:
+                bash_match = any_block
+
+        if bash_match:
+            action = "bash"
+            command = bash_match.group(1).strip()
+            if command.startswith("$"):
+                command = command.lstrip("$").strip()
+        elif re.search(r"^\s*finish\s*$", text, re.MULTILINE | re.IGNORECASE) or re.search(r"(?:ACTION|Action)[\s:\-]+finish\b", text, re.IGNORECASE) or re.search(r"\bfinish\s*$", text.strip(), re.IGNORECASE):
             action = "finish"
-        else:
-            bash_match = re.search(r"```(?:bash|sh)\s*(.*?)\s*```", text, re.DOTALL)
-            if not bash_match and not re.search(r"\bfinish\b", text, re.IGNORECASE):
-                bash_match = re.search(r"```(?!(?:json|yaml|yml))\s*(.*?)\s*```", text, re.DOTALL)
-            if bash_match:
-                action = "bash"
-                command = bash_match.group(1).strip()
-            elif "finish" in text.lower():
-                action = "finish"
+        elif self.extract_json(text):
+            action = "finish"
+        elif "finish" in text.lower() and not bash_match:
+            action = "finish"
 
         return thought, action, command
 
@@ -160,9 +180,30 @@ class BaseAgent:
 
     # Log step
     def log(self, *args, **kwargs):
-        if args and isinstance(args[0], dict):
-            return self.memory.add(**args[0])
-        return self.memory.add(*args, **kwargs)
+        data = args[0] if (args and isinstance(args[0], dict)) else kwargs
+        entry = self.memory.add(**data) if (args and isinstance(args[0], dict)) else self.memory.add(*args, **kwargs)
+
+        import logging
+        logger = logging.getLogger("vulnalysis")
+        action = data.get("action", "")
+        cmd = str(data.get("command", "") or "").strip().replace("\n", " ")
+        thought = str(data.get("thought", "") or "").strip().replace("\n", " ")
+        obs = str(data.get("observation", "") or "").strip().replace("\n", " ")
+
+        if action == "finish":
+            if thought:
+                logger.info(f"[{self.name}] Thought: {thought}")
+            logger.info(f"  [{self.name}] Action: {obs or 'Completed'}")
+        elif action == "bash":
+            if thought:
+                logger.info(f"[{self.name}] Thought: {thought}")
+            logger.info(f"  [{self.name}] Action: bash `{cmd}`")
+        elif action:
+            if thought:
+                logger.info(f"[{self.name}] Thought: {thought}")
+            logger.info(f"  [{self.name}] Action: {action}")
+
+        return entry
 
 
 __all__ = ["BaseAgent"]

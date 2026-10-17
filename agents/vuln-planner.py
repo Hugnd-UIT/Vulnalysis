@@ -66,10 +66,12 @@ class VulnPlannerAgent(BaseAgent):
             self.messages.append({"role": "assistant", "content": reply})
 
             # Finish
-            if action == "finish" or (not action and "finish" in reply.lower()):
+            if action == "finish":
                 self.log(thought=thought, action="finish", observation="Coordinator completed")
                 extracted = self.extract_json(reply)
-                return extracted or {"decision": "APPROVE"}
+                if extracted and isinstance(extracted, dict) and "decision" in extracted:
+                    return extracted
+                return False
 
             # Execute
             if action == "bash" and command:
@@ -80,6 +82,8 @@ class VulnPlannerAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
+                if self.step >= self.step_limit - 1:
+                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error

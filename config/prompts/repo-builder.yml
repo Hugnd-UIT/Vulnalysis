@@ -86,7 +86,7 @@ agent:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
-  step-limit: 200
+  step-limit: 15
   cost-limit: 15
 
 environment:
