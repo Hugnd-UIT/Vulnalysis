@@ -43,11 +43,18 @@ class OpenAI:
         self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url, timeout=60.0)
 
     def chat(self, messages, **kwargs):
+        call_kwargs = dict(kwargs)
+        try:
+            from utils import apply
+            call_kwargs = apply(call_kwargs)
+        except Exception:
+            pass
+
         # Send request
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            **kwargs
+            **call_kwargs
         )
         if not response or not getattr(response, "choices", None):
             return ""
