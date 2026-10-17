@@ -279,16 +279,9 @@ class Orchestrator:
                 verifier=verdict,
             )
 
-            if not coord_verdict or not isinstance(coord_verdict, dict) or "decision" not in coord_verdict:
+            if not coord_verdict or not isinstance(coord_verdict, dict):
                 coord_verdict = verdict or {"decision": "FAILED"}
-                if isinstance(coord_verdict, dict) and "decision" not in coord_verdict:
-                    alignment = coord_verdict.get("alignment", {}) or {}
-                    if alignment.get("location_match") and alignment.get("mechanism_match"):
-                        coord_decision = "CONFIRMED"
-                    else:
-                        coord_decision = "FAILED"
-                else:
-                    coord_decision = coord_verdict.get("decision", "").upper()
+                coord_decision = coord_verdict.get("decision", "").upper()
             else:
                 coord_decision = coord_verdict.get("decision", "").upper()
 

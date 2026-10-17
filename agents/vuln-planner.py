@@ -72,7 +72,8 @@ class VulnPlannerAgent(BaseAgent):
                 extracted = self.extract_json(reply)
                 if extracted and isinstance(extracted, dict) and "decision" in extracted:
                     return extracted
-                return False
+                self.messages.append({"role": "user", "content": self.error_prompt})
+                continue
 
             # Execute
             if action == "bash" and command:
