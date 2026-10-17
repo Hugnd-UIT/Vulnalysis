@@ -1,34 +1,34 @@
 provider:
-  url: https://api.xkiro.com/v1
-  key: sk-xt-0d2012490171f74d83985759f792e926448a0b4cbb6efeb5
+  url: https://api.groq.com/openai/v1
+  key: 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
 
 agents:
   vuln-planner:
-    model: mistralai/mistral-large-2512
-    input-rate: 2.0
-    output-rate: 6.0
+    model: openai/gpt-oss-120b
+    input-rate: 0.0
+    output-rate: 0.0
 
   vuln-analyzer:
-    model: mistralai/mistral-large-2512
-    input-rate: 2.0
-    output-rate: 6.0
+    model: openai/gpt-oss-120b
+    input-rate: 0.0
+    output-rate: 0.0
 
   repo-builder:
-    model: mistralai/codestral-2508
-    input-rate: 0.3
-    output-rate: 0.9
+    model: openai/gpt-oss-20b
+    input-rate: 0.0
+    output-rate: 0.0
 
   repo-retriever:
-    model: mistralai/codestral-2508
-    input-rate: 0.3
-    output-rate: 0.9
+    model: openai/gpt-oss-20b
+    input-rate: 0.0
+    output-rate: 0.0
 
   pov-generator:
-    model: mistralai/codestral-2508
-    input-rate: 0.3
-    output-rate: 0.9
+    model: openai/gpt-oss-120b
+    input-rate: 0.0
+    output-rate: 0.0
 
   pov-verifier:
-    model: mistralai/mistral-large-2512
-    input-rate: 2.0
-    output-rate: 6.0
+    model: openai/gpt-oss-120b
+    input-rate: 0.0
+    output-rate: 0.0

@@ -247,12 +247,12 @@ class Orchestrator:
             decision = feedback.get("decision", "").upper()
             log.info(f"Coordinator: {decision}")
 
-            # Revise or challenge in round 1: feedback to Analyzer to demand evidence
+            # Revise
             if decision == "REVISE" or (decision == "REJECT" and round_num == 1):
                 prev_feedback = feedback
                 continue
 
-            # Final rejection after debate
+            # Reject
             if decision == "REJECT":
                 self.state.update_status(flow_id, "FAILED")
                 self.state.reject(reason=json.dumps(feedback.get("issues", [])))
