@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends -o Acquire::Ret
     unzip \
     tar \
     file \
+    jq \
     build-essential \
     clang \
     cmake \

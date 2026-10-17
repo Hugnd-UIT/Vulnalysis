@@ -26,9 +26,9 @@ agent:
     to sensitive sink operations.
 
     ## Workflow
-    1. Read one call chain at a time from {{call_flows}}.
+    1. Read one call chain at a time from {{call_flows}} (using `jq`, `cat`, or `python3`).
     2. Trace functions along the chain and inspect source code to bridge hidden calls.
-    3. Locate untrusted input and sensitive sink operations with concrete code evidence.
+    3. Audit source and sink: Suspect every unverified path; verify untrusted input and sensitive sink operations with concrete code evidence.
     4. Append the structured taint flow directly to {{taint_flows}}.
     5. Repeat for each chain in {{call_flows}}, then call `finish`.
 
@@ -144,7 +144,7 @@ agent:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
-  step-limit: 15
+  step-limit: 30
   cost-limit: 15
 
 environment:
