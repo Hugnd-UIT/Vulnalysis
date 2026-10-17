@@ -198,8 +198,8 @@ class BaseAgent:
                     self.step += 1
                     return reply
                 last_err = "Empty response"
-                self.log_error(f"Empty response (attempt {attempt+1}/5)")
-                time.sleep((attempt + 1) * 2 + random.random())
+                self.log_error(f"Empty response")
+                time.sleep(0.5)
             except Exception as e:
                 last_err = e
                 err_str = str(e)

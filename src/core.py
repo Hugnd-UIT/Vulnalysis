@@ -51,6 +51,7 @@ class Orchestrator:
 
         retriever_result = [None]
         builder_result = [None]
+        builder_agent_ref = [None]
 
         # Retriever thread
         def run_retriever():
@@ -79,6 +80,7 @@ class Orchestrator:
                 config_path=self.config_path,
                 provider_cls=self.provider_cls,
             )
+            builder_agent_ref[0] = agent
             builder_result[0] = agent.run(self.repo_container)
             log.info(f"Repo builder finished: {builder_result[0]}\n")
 
@@ -86,6 +88,7 @@ class Orchestrator:
         t_builder = threading.Thread(target=run_builder, name="builder")
 
         t_retriever.start()
+        time.sleep(0.5)
         t_builder.start()
 
         t_retriever.join()
@@ -96,7 +99,25 @@ class Orchestrator:
         fuzz_mod = importlib.import_module("src.fuzz-harness")
         self.state.harness = fuzz_mod.check(self.repo, self.outputs_path)
 
-        return retriever_result[0], builder_result[0]
+        b_res = builder_result[0]
+        build_ok = False
+        if isinstance(b_res, dict) and b_res.get("status", "").upper() == "READY":
+            build_ok = True
+        elif b_res is True:
+            build_ok = True
+
+        if not build_ok:
+            log.error("[!] Build failed!")
+            explanation = ""
+            if builder_agent_ref[0]:
+                try:
+                    explanation = builder_agent_ref[0].explain_failure()
+                except Exception as e:
+                    explanation = f"Could not ask builder: {e}"
+            print(f"\n\033[1;31m[!] Build failed! Reason from builder:\n{explanation or 'No explanation returned'}\033[0m\n")
+            return retriever_result[0], False
+
+        return retriever_result[0], True
 
     # Phase 3
     def phase_pov(self, hypothesis):
@@ -395,6 +416,10 @@ class Orchestrator:
         self.init_sandbox()
 
         taint_path, build_ok = self.phase_prep()
+
+        if not build_ok:
+            log.error("Pipeline stopped due to target repository build failure.")
+            return self.phase_report()
 
         # Load taint flows
         count = self.state.load_flows()
