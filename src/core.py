@@ -280,9 +280,13 @@ class Orchestrator:
 
             if not coord_verdict or not isinstance(coord_verdict, dict):
                 coord_verdict = verdict or {"decision": "FAILED"}
-                coord_decision = coord_verdict.get("decision", "").upper()
-            else:
-                coord_decision = coord_verdict.get("decision", "").upper()
+
+            coord_decision = coord_verdict.get("decision", "").upper()
+            if not coord_decision and isinstance(coord_verdict, dict):
+                alignment = coord_verdict.get("alignment", {})
+                if isinstance(alignment, dict) and alignment.get("location_match") and alignment.get("mechanism_match"):
+                    coord_decision = "CONFIRMED"
+                    coord_verdict["decision"] = "CONFIRMED"
 
             log.info(f"Coordinator decision: {coord_decision}")
 

@@ -40,10 +40,24 @@ class PipelineState:
         raw = []
         if p.exists():
             with open(p, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        raw.append(json.loads(line))
+                content = f.read().strip()
+                if content:
+                    decoder = json.JSONDecoder()
+                    idx = 0
+                    while idx < len(content):
+                        while idx < len(content) and content[idx].isspace():
+                            idx += 1
+                        if idx >= len(content):
+                            break
+                        try:
+                            obj, end = decoder.raw_decode(content, idx)
+                            if isinstance(obj, dict):
+                                raw.append(obj)
+                            elif isinstance(obj, list):
+                                raw.extend([x for x in obj if isinstance(x, dict)])
+                            idx = end
+                        except Exception:
+                            idx += 1
         self.flows = rank(dedup(raw))
         self.index = 0
         return len(self.flows)

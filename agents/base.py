@@ -120,6 +120,9 @@ class BaseAgent:
             command = bash_match.group(1).strip()
             if command.startswith("$"):
                 command = command.lstrip("$").strip()
+            if command.lower() == "finish":
+                action = "finish"
+                command = ""
         elif re.search(r"^\s*finish\s*$", text, re.MULTILINE | re.IGNORECASE) or re.search(r"(?:ACTION|Action)[\s:\-]+finish\b", text, re.IGNORECASE) or re.search(r"\bfinish\s*$", text.strip(), re.IGNORECASE):
             action = "finish"
         elif self.extract_json(text):
