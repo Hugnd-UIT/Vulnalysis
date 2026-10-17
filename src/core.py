@@ -7,18 +7,9 @@ from pathlib import Path
 from src.state import PipelineState
 from docker.sandbox import init as sandbox_init
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s", datefmt="%H:%M:%S")
-for lib in ["httpx", "httpx2", "httpcore", "httpcore2", "openai", "urllib3"]:
-    logging.getLogger(lib).setLevel(logging.WARNING)
+from utils.logger import setup_logger
 
-class HttpFilter(logging.Filter):
-    def filter(self, record):
-        return "HTTP Request:" not in record.getMessage()
-
-for handler in logging.root.handlers:
-    handler.addFilter(HttpFilter())
-
-log = logging.getLogger("vulnalysis")
+log = setup_logger()
 
 
 class Orchestrator:
@@ -465,7 +456,8 @@ def main():
     report = orch.run()
 
     confirmed = len(report.get("vulnerabilities", []))
-    print(f"\n[+] Done. Vulnerabilities: {confirmed}")
+    color = "\033[1;32m" if confirmed > 0 else "\033[1;33m"
+    print(f"\n{color}[+] Done. Vulnerabilities: {confirmed}\033[0m")
 
 
 if __name__ == "__main__":
