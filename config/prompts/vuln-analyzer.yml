@@ -70,7 +70,7 @@ agent:
       "preconditions": [
         "<string: precondition>"
       ],
-      "hint": "<string: payload hint>",
+      "hint": "<string: trigger condition or input format>",
       "expected": "<string: expected behavior>",
       "oracle": {
         "type": "<string: sanitizer, canary, pattern, status, or timing>",
@@ -78,7 +78,7 @@ agent:
         "operator": "<string: contains, regex, equals, or greater_than>",
         "expected": "<string: expected indicator>",
         "target": "<string: sink function or file>",
-        "command": "<string: example execution command>"
+        "command": "<string: command template with placeholders>"
       },
       "remediation": "<string: fix recommendation>"
     }
@@ -91,8 +91,8 @@ agent:
       "cwe": [
         "CWE-78"
       ],
-      "title": "OS Command Injection",
-      "description": "User input passed to system command without sanitization",
+      "title": "Command execution parameter weakness",
+      "description": "Untrusted input propagates to command execution sink without bounds check",
       "source": {
         "ep": "HTTP query parameter",
         "file": "server.py",
@@ -111,17 +111,17 @@ agent:
         ]
       },
       "preconditions": [
-        "Parameter contains shell characters"
+        "Input contains delimiter characters"
       ],
-      "hint": "Inject semicolon followed by command",
-      "expected": "Command executes in shell",
+      "hint": "Command separator delimiter in parameter",
+      "expected": "Canary token reflected in execution output",
       "oracle": {
         "type": "canary",
         "channel": "stdout",
         "operator": "contains",
-        "expected": "VULN_CANARY_TOKEN",
+        "expected": "<canary_token>",
         "target": "execute_cmd",
-        "command": "python server.py --param '; echo VULN_CANARY_TOKEN;'"
+        "command": "python server.py --param '<canary_input>'"
       },
       "remediation": "Validate input and avoid shell invocation"
     }

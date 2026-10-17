@@ -60,7 +60,7 @@ agent:
     ```json
     {
       "decision": "CONFIRMED",
-      "reason": "Arbitrary command execution confirmed at sink with verified PoV",
+      "reason": "Hypothesis validated at target sink with verified execution evidence",
       "issues": []
     }
     ```

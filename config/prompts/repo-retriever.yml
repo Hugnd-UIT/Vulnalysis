@@ -77,7 +77,7 @@ agent:
     ```json
     {
       "id": "T01",
-      "title": "Command injection via request parameter",
+      "title": "Untrusted parameter propagation to execution sink",
       "source": {
         "file": "app.py",
         "function": "handle_request",

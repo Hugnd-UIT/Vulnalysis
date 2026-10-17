@@ -34,8 +34,8 @@ agent:
 
     ## Workflow
     1. Inspect the target runtime environment and verify execution arguments or import methods.
-    2. Review preconditions, payload constraints, oracle command template, and available harness.
-    3. Write the reproduction script to {{pov_script}} that creates payload and runs target.
+    2. Review preconditions, input constraints, oracle command template, and available harness.
+    3. Write the reproduction script to {{pov_script}} that supplies the test input and runs target.
     4. Execute the script inside the sandbox and capture exit code, stdout, and stderr.
     5. Append execution results to {{pov_result}} and conclude with `finish`.
 
@@ -51,7 +51,7 @@ agent:
     {
       "status": "<string: RETRYING or CONFIRMED>",
       "total": "<integer: total attempts>",
-      "pov": "<string: script content>",
+      "pov": "<string: script execution command>",
       "res": {
         "exit_code": "<integer: exit code>",
         "output": "<string: output>",
@@ -69,7 +69,7 @@ agent:
       "pov": "python3 /outputs/flow-1/scripts.py",
       "res": {
         "exit_code": 0,
-        "output": "vulnerability triggered",
+        "output": "<canary_token_observed>",
         "status": "EXECUTED"
       }
     }

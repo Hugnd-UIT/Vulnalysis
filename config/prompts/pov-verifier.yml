@@ -75,10 +75,10 @@ agent:
     ```json
     {
       "issues": [
-        "Payload does not reach the sink"
+        "Input does not reach the target sink"
       ],
       "suggestions": [
-        "Pass payload via query parameter"
+        "Pass input parameter via query parameter"
       ]
     }
     ```
@@ -87,7 +87,7 @@ agent:
 
     ```json
     {
-      "reason": "Arbitrary command execution confirmed at sink",
+      "reason": "Sink execution confirmed with expected oracle observation",
       "alignment": {
         "location_match": true,
         "mechanism_match": true
