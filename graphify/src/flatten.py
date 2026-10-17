@@ -111,8 +111,13 @@ def walk(
         if sig in seen:
             return
         seen.add(sig)
+        def format_node(nid):
+            n = nodes.get(nid, {})
+            f = n.get("file", "")
+            lbl = n.get("label", nid).replace("()", "").strip()
+            return f"{f}:{lbl}" if f else lbl
 
-        names = [nodes.get(nid, {}).get("label", nid) for nid in stack]
+        names = [format_node(nid) for nid in stack]
         root_id = stack[0]
         leaf_id = stack[-1]
 

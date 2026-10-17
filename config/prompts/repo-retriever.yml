@@ -26,7 +26,7 @@ agent:
     to sensitive sink operations.
 
     ## Workflow
-    1. Read one call chain at a time from {{call_flows}} (using `jq`, `cat`, or `python3`).
+    1. Read one call chain at a time from {{call_flows}} using tools like `jq`, `cat`, or `python3`.
     2. Trace functions along the chain and inspect source code to bridge hidden calls.
     3. Audit source and sink: Suspect every unverified path; verify untrusted input and sensitive sink operations with concrete code evidence.
     4. Append the structured taint flow directly to {{taint_flows}}.
