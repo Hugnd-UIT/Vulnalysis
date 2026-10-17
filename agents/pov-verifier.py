@@ -64,7 +64,7 @@ class PovVerifierAgent(BaseAgent):
             if action == "finish":
                 self.log(thought=thought, action="finish", observation="PoV verifier completed")
                 extracted = self.extract_json(reply)
-                return extracted or {"decision": "CONFIRMED"}
+                return extracted or True
 
             # Execute
             if action == "bash" and command:

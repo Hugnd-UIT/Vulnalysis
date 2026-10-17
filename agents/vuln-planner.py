@@ -72,7 +72,7 @@ class VulnPlannerAgent(BaseAgent):
                 extracted = self.extract_json(reply)
                 if extracted and isinstance(extracted, dict) and "decision" in extracted:
                     return extracted
-                return {"decision": "APPROVE"}
+                return False
 
             # Execute
             if action == "bash" and command:

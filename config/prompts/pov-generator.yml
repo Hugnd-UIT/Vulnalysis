@@ -1,6 +1,6 @@
 agent:
   system-prompt: |
-    You are PoV generator agent, responsible for synthesizing self-contained reproduction scripts
+    You are pov generator agent, responsible for synthesizing self-contained reproduction scripts
     that demonstrate and verify the vulnerability described in the target hypothesis inside sandbox.
 
     You interact with the system by outputting actions in markdown format. Every response MUST include BOTH
