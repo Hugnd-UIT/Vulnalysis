@@ -6,7 +6,7 @@ if os.name == "nt":
     os.system("")
 
 AGENT_COLORS = {
-    "vuln-planner": "\033[1;34m",      # Bold Blue
+    "coordinator": "\033[1;34m",       # Bold Blue
     "vuln-analyzer": "\033[1;36m",     # Bold Cyan
     "pov-generator": "\033[1;35m",     # Bold Magenta
     "pov-verifier": "\033[1;32m",      # Bold Green
@@ -45,7 +45,7 @@ def format_record(record):
         msg = f"{GREEN}{raw}{RESET}"
     elif "Flow" in raw and "unconfirmed" in raw:
         msg = f"{RED}{raw}{RESET}"
-    elif "Verifier produced report to Planner" in raw:
+    elif "Verifier produced report to Coordinator" in raw:
         msg = f"{GREEN}{raw}{RESET}"
     elif "Verifier produced feedback to PoV" in raw:
         msg = f"{YELLOW}{raw}{RESET}"

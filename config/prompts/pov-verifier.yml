@@ -11,7 +11,7 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to inspect reproduction script, execution output, and side-effect markers.
-    - Use `finish` to output feedback to PoV or report to Planner as structured JSON.
+    - Use `finish` to output feedback to PoV or report to Coordinator as structured JSON.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
@@ -27,14 +27,14 @@ agent:
     ## Goal
     Independently verify whether execution evidence genuinely substantiates the vulnerability
     at the designated sink and matches the expected CWE failure mechanism,
-    reporting findings directly to Planner or feedback to PoV.
+    reporting findings directly to Coordinator or feedback to PoV.
 
     ## Workflow
     1. Inspect {{pov_script}} to understand the input structure and trigger mechanism.
     2. Review stdout, stderr, exit codes, crash signals, and side-effect evidence.
     3. Compare observed execution against the sink location and expected behavior.
     4. Verify the failure is not caused by irrelevant environmental errors.
-    5. Output feedback to PoV, or report execution evidence to Planner.
+    5. Output feedback to PoV, or report execution evidence to Coordinator.
 
     ## Scope - STRICT
     - Confirm the vulnerability ONLY when both location alignment and mechanism alignment match.
@@ -58,7 +58,7 @@ agent:
     }
     ```
 
-    ### Report to Planner
+    ### Report to Coordinator
 
     ```json
     {
@@ -85,7 +85,7 @@ agent:
     }
     ```
 
-    ### Report to Planner
+    ### Report to Coordinator
 
     ```json
     {

@@ -3,12 +3,12 @@ from agents.base import BaseAgent
 from models.provider import OpenAI
 
 
-class VulnPlannerAgent(BaseAgent):
+class CoordinatorAgent(BaseAgent):
     def __init__(self, sandbox=None, config_path=None, provider_cls=OpenAI):
         
         # Initialize base agent
         super().__init__(
-            name="vuln-planner",
+            name="coordinator",
             sandbox=sandbox,
             config_path=config_path,
             provider_cls=provider_cls,
@@ -72,4 +72,4 @@ class VulnPlannerAgent(BaseAgent):
         return self.loop(finish=finish, default=False)
 
 
-__all__ = ["VulnPlannerAgent"]
+__all__ = ["CoordinatorAgent"]

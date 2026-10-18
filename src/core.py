@@ -191,7 +191,7 @@ class Orchestrator:
             last_verdict = verdict
             decision = verdict.get("decision", "").upper()
             if decision in ("CONFIRMED", "FAILED") or ("alignment" in verdict and "issues" not in verdict):
-                log.info("Verifier produced report to Planner")
+                log.info("Verifier produced report to Coordinator")
                 return verdict
 
             # Retry with feedback
@@ -205,7 +205,7 @@ class Orchestrator:
         flow_id = taint_flow.get("id", f"flow-{self.state.index}")
         log.info("=== Static analyzing ===")
 
-        from agents import analyzer, planner
+        from agents import analyzer, coordinator
         prev_feedback = None
 
         self.state.flow_dir(flow_id)
@@ -216,7 +216,7 @@ class Orchestrator:
             config_path=self.config_path,
             provider_cls=self.provider_cls,
         )
-        planner_agent = planner.VulnPlannerAgent(
+        coordinator_agent = coordinator.CoordinatorAgent(
             sandbox=self.container,
             config_path=self.config_path,
             provider_cls=self.provider_cls,
@@ -254,7 +254,7 @@ class Orchestrator:
                 self.state.save_hypothesis(flow_id, candidate)
             self.state.set_candidate(candidate)
 
-            feedback = planner_agent.run(
+            feedback = coordinator_agent.run(
                 self.repo_container,
                 candidate,
                 taint_flow,
@@ -285,7 +285,7 @@ class Orchestrator:
 
             verdict = self.phase_pov(approved)
 
-            coord_verdict = planner_agent.run(
+            coord_verdict = coordinator_agent.run(
                 self.repo_container,
                 approved,
                 taint_flow,

@@ -3,7 +3,7 @@ provider:
   key: sk-xt-a2f6db5f38bf8a353b4af47ed16d12d1c06790b2d844c904
 
 agents:
-  vuln-planner:
+  coordinator:
     model: mistralai/mistral-large-2512
     input-rate: 2.0
     output-rate: 6.0
