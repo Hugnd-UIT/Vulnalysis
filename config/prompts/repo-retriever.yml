@@ -35,6 +35,7 @@ agent:
     ## Scope - STRICT
     - Bridge missing call chain links like function pointers or dynamic dispatches.
     - Navigate strictly along paths in {{call_flows}}; do not wander into unrelated files.
+    - Exclude binary files and build artifacts (e.g. use `grep -I --exclude-dir=build` or focus on source folders like `src/`).
     - Locate sources, transforms, and sinks; do not classify CWEs or attempt exploit synthesis.
     - Group related operations on the same buffer into one flow pointing to the exact sink line.
     - Every path, function, and line number must exist on disk; use null for unknowns.

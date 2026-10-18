@@ -41,6 +41,7 @@ class PovGeneratorAgent(BaseAgent):
         else:
             self.memory.clear()
             self.step = 0
+            self.cmd_history = []
             hyp_str = json.dumps(hypothesis, indent=2, ensure_ascii=False) if isinstance(hypothesis, (dict, list)) else str(hypothesis or "")
             harness_str = json.dumps(harness, indent=2, ensure_ascii=False) if isinstance(harness, (dict, list)) else str(harness or "{}")
             initial_task = self.render(
@@ -92,10 +93,18 @@ class PovGeneratorAgent(BaseAgent):
                 # Log
                 self.log(thought=thought, action="bash", command=command, observation=output[:500])
 
+                # Check stuck
+                is_stuck, warning = self.check_stuck(command, code)
+                if is_stuck:
+                    self.log_error(f"Stuck: {warning}. Aborting PoV generation.")
+                    break
+
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
                 obs_text += self.check_exceeded()
                 self.messages.append({"role": "user", "content": obs_text})
+                if warning:
+                    self.messages.append({"role": "user", "content": warning})
             else:
                 # Error
                 self.log_error("Invalid action")

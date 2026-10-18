@@ -76,6 +76,7 @@ class RepoRetrieverAgent(BaseAgent):
         # Reset memory
         self.memory.clear()
         self.step = 0
+        self.cmd_history = []
 
         files = self.scan(repo_path)
         graph = self.load_graph(repo_path, graph_path)
@@ -142,10 +143,18 @@ class RepoRetrieverAgent(BaseAgent):
                 # Log
                 self.log(thought=thought, action="bash", command=command, observation=output[:500])
 
+                # Check stuck
+                is_stuck, warning = self.check_stuck(command, code)
+                if is_stuck:
+                    self.log_error(f"Stuck: {warning}. Aborting retrieval.")
+                    break
+
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
                 obs_text += self.check_exceeded()
                 self.messages.append({"role": "user", "content": obs_text})
+                if warning:
+                    self.messages.append({"role": "user", "content": warning})
             else:
                 # Error
                 self.log_error("Invalid action")

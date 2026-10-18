@@ -35,6 +35,8 @@ class BaseAgent:
         self.timeout = int(env_cfg.get("timeout", 300))
         self.temperature = float(model_cfg.get("temperature", 0.0))
 
+        self.cmd_history = []
+
         # Initialize provider
         self.llm = provider_cls(agent_name=self.name, config_path=config_path)
 
@@ -74,6 +76,25 @@ class BaseAgent:
         if 0 < remaining <= threshold and self.exceeded_prompt:
             return "\n\n" + self.render(self.exceeded_prompt, remaining=remaining, total=self.step_limit).strip()
         return ""
+
+    def check_stuck(self, command: str, code: int) -> tuple[bool, str]:
+        cmd_norm = " ".join(command.strip().split())
+        self.cmd_history.append((cmd_norm, code))
+
+        fail_count = sum(1 for c, r in self.cmd_history if c == cmd_norm and r != 0)
+        success_count = sum(1 for c, r in self.cmd_history if c == cmd_norm and r == 0)
+
+        if fail_count >= 3:
+            return True, f"Command '{cmd_norm}' failed {fail_count} times"
+        elif fail_count == 2:
+            return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times. You MUST change your approach or fix prerequisites before running it again.]"
+
+        if success_count >= 3:
+            return True, f"Command '{cmd_norm}' was executed {success_count} times redundantly"
+        elif success_count == 2:
+            return False, f"[WARNING: You have already executed '{cmd_norm}' successfully. Repeating the exact same command will not yield new information. You MUST refine your query or try a different approach.]"
+
+        return False, ""
 
     # Execute command
     def execute(self, command, timeout=None):

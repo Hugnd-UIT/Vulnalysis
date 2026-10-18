@@ -37,19 +37,6 @@ class RepoBuilderAgent(BaseAgent):
                         found.append(name)
         return sorted(found)
 
-    def check_stuck(self, command: str, code: int) -> tuple[bool, str]:
-        cmd_norm = " ".join(command.strip().split())
-        self.cmd_history.append((cmd_norm, code))
-
-        fail_count = sum(1 for c, r in self.cmd_history if c == cmd_norm and r != 0)
-
-        if fail_count >= 3:
-            return True, f"Command '{cmd_norm}' failed {fail_count} times"
-        elif fail_count == 2:
-            return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times. You MUST change your approach or fix prerequisites before running it again.]"
-
-        return False, ""
-
     def run(self, repo_path):
         # Reset memory
         self.memory.clear()
