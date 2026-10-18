@@ -54,14 +54,13 @@ class BaseAgent:
             return ""
         try:
             from jinja2 import Template
-            text = Template(template).render(**kwargs)
+            return Template(template).render(**kwargs)
         except Exception:
             text = template
             for k, v in kwargs.items():
                 text = text.replace(f"{{{{{k}}}}}", str(v))
-        for k, v in kwargs.items():
-            text = text.replace(f"{{{k}}}", str(v))
-        return text
+                text = text.replace(f"{{{k}}}", str(v))
+            return text
 
     # Check limits
     def is_step_exceeded(self):
@@ -95,6 +94,55 @@ class BaseAgent:
             return False, f"[WARNING: You have already executed '{cmd_norm}' successfully. Repeating the exact same command will not yield new information. You MUST refine your query or try a different approach.]"
 
         return False, ""
+
+    # ReAct loop
+    def loop(self, finish=None, default=False):
+        while not self.is_step_exceeded() and not self.is_cost_exceeded():
+            reply = self.call(self.messages)
+            if not reply or reply.startswith("[!]"):
+                break
+            thought, action, command = self.parse(reply)
+
+            # Thought
+            self.log_thought(thought)
+            self.messages.append({"role": "assistant", "content": reply})
+
+            # Finish
+            if action == "finish":
+                if finish:
+                    done, result = finish(thought, reply)
+                    if done:
+                        return result
+                self.log_error("Invalid json")
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
+                continue
+
+            # Execute
+            if action == "bash" and command:
+                self.log_action("bash", command)
+                code, output = self.execute(command)
+
+                # Log
+                self.log(thought=thought, action="bash", command=command, observation=output[:500])
+
+                # Check stuck
+                is_stuck, warning = self.check_stuck(command, code)
+                if is_stuck:
+                    self.log_error(f"Stuck: {warning}. Aborting {self.name}.")
+                    break
+
+                # Observation
+                obs_text = self.render(self.react_prompt, code=code, output=output)
+                obs_text += self.check_exceeded()
+                self.messages.append({"role": "user", "content": obs_text})
+                if warning:
+                    self.messages.append({"role": "user", "content": warning})
+            else:
+                # Error
+                self.log_error("Invalid action")
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
+
+        return default
 
     # Execute command
     def execute(self, command, timeout=None):
@@ -253,9 +301,9 @@ class BaseAgent:
 
     # Log step
     def log(self, *args, **kwargs):
-        data = args[0] if (args and isinstance(args[0], dict)) else kwargs
-        entry = self.memory.add(**data) if (args and isinstance(args[0], dict)) else self.memory.add(*args, **kwargs)
-        return entry
+        if args and isinstance(args[0], dict):
+            return self.memory.add(**args[0])
+        return self.memory.add(**kwargs)
 
 
 __all__ = ["BaseAgent"]

@@ -15,7 +15,6 @@ class RepoRetrieverAgent(BaseAgent):
             config_path=config_path,
             provider_cls=provider_cls,
         )
-        self.messages = []
 
     # Scan files
     def scan(self, repo_path):
@@ -103,64 +102,24 @@ class RepoRetrieverAgent(BaseAgent):
             {"role": "user", "content": initial_task},
         ]
 
-        # ReAct loop
-        while not self.is_step_exceeded() and not self.is_cost_exceeded():
-            # Call llm
-            reply = self.call(self.messages)
-            if not reply or reply.startswith("[!]"):
-                break
-            thought, action, command = self.parse(reply)
-
-            # Thought
-            self.log_thought(thought)
-            self.messages.append({"role": "assistant", "content": reply})
-
-            # Finish
-            if action == "finish":
-                extracted = self.extract_json(reply)
-                code, _ = self.execute(f"test -s {taint_flows}")
-                if code == 0:
+        def finish(thought, reply):
+            extracted = self.extract_json(reply)
+            code, _ = self.execute(f"test -s {taint_flows}")
+            if code == 0:
+                self.log_action("finish")
+                self.log(thought=thought, action="finish", observation="Repo retriever completed")
+                return True, taint_flows
+            if extracted:
+                items = extracted if isinstance(extracted, list) else [extracted]
+                lines = "\n".join(json.dumps(item) for item in items if isinstance(item, dict))
+                if lines:
+                    self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines}\nEOF")
                     self.log_action("finish")
                     self.log(thought=thought, action="finish", observation="Repo retriever completed")
-                    return taint_flows
-                if extracted:
-                    items = extracted if isinstance(extracted, list) else [extracted]
-                    lines = "\n".join(json.dumps(item) for item in items if isinstance(item, dict))
-                    if lines:
-                        self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines}\nEOF")
-                        self.log_action("finish")
-                        self.log(thought=thought, action="finish", observation="Repo retriever completed")
-                        return taint_flows
-                self.log_error("Invalid json")
-                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
-                continue
+                    return True, taint_flows
+            return False, None
 
-            # Execute
-            if action == "bash" and command:
-                self.log_action("bash", command)
-                code, output = self.execute(command)
-
-                # Log
-                self.log(thought=thought, action="bash", command=command, observation=output[:500])
-
-                # Check stuck
-                is_stuck, warning = self.check_stuck(command, code)
-                if is_stuck:
-                    self.log_error(f"Stuck: {warning}. Aborting retrieval.")
-                    break
-
-                # Observation
-                obs_text = self.render(self.react_prompt, code=code, output=output)
-                obs_text += self.check_exceeded()
-                self.messages.append({"role": "user", "content": obs_text})
-                if warning:
-                    self.messages.append({"role": "user", "content": warning})
-            else:
-                # Error
-                self.log_error("Invalid action")
-                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
-
-        return taint_flows
+        return self.loop(finish=finish, default=taint_flows)
 
 
 __all__ = ["RepoRetrieverAgent"]

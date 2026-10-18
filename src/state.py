@@ -14,7 +14,8 @@ class PipelineState:
         self.outputs_path = Path(outputs_path)
         self.outputs_path.mkdir(parents=True, exist_ok=True)
 
-        self.flows = []
+        self.flows_file = None
+        self.total_flows = 0
         self.index = 0
         self.flow = None
 
@@ -58,20 +59,37 @@ class PipelineState:
                             idx = end
                         except Exception:
                             idx += 1
-        self.flows = rank(dedup(raw))
+        processed = rank(dedup(raw))
+        self.flows_file = p
+        self.total_flows = len(processed)
         self.index = 0
-        if raw and p.exists():
+        if p.exists() or processed:
             with open(p, "w", encoding="utf-8") as f:
-                for flow in raw:
+                for flow in processed:
                     f.write(json.dumps(flow, ensure_ascii=False) + "\n")
-        return len(self.flows)
+        return self.total_flows
 
     def next_flow(self):
-        if self.index >= len(self.flows):
+        if self.index >= self.total_flows or not self.flows_file or not self.flows_file.exists():
             self.flow = None
             return None
-        self.flow = self.flows[self.index]
+
+        target_idx = self.index
+        flow = None
+        with open(self.flows_file, "r", encoding="utf-8") as f:
+            for current_idx, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                if current_idx == target_idx:
+                    try:
+                        flow = json.loads(line)
+                    except Exception:
+                        flow = None
+                    break
+
         self.index += 1
+        self.flow = flow
         self.candidate = None
         self.target = None
         self.debate_round = 0
@@ -79,7 +97,7 @@ class PipelineState:
         return self.flow
 
     def has_flows(self):
-        return self.index < len(self.flows)
+        return self.index < self.total_flows
 
     def set_candidate(self, hypothesis):
         self.candidate = hypothesis
@@ -194,7 +212,7 @@ class PipelineState:
 
     def summary(self):
         return {
-            "total_flows": len(self.flows),
+            "total_flows": self.total_flows,
             "processed": self.index,
             "confirmed": len(self.confirmed),
             "rejected": len(self.rejected),

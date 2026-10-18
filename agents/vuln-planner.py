@@ -13,7 +13,6 @@ class VulnPlannerAgent(BaseAgent):
             config_path=config_path,
             provider_cls=provider_cls,
         )
-        self.messages = []
 
     def run(self, 
         repo, 
@@ -59,58 +58,18 @@ class VulnPlannerAgent(BaseAgent):
                 obs = self.render(self.react_prompt, **render_kwargs)
                 self.messages.append({"role": "user", "content": obs})
 
-        # ReAct loop
-        while not self.is_step_exceeded() and not self.is_cost_exceeded():
-            # Call llm
-            reply = self.call(self.messages)
-            if not reply or reply.startswith("[!]"):
-                break
-            thought, action, command = self.parse(reply)
+        def finish(thought, reply):
+            extracted = self.extract_json(reply)
+            if extracted and isinstance(extracted, dict):
+                if "decision" not in extracted and ("issues" in extracted or "suggestions" in extracted):
+                    extracted["decision"] = "REVISE"
+                if "decision" in extracted:
+                    self.log_action("finish")
+                    self.log(thought=thought, action="finish", observation="Coordinator completed")
+                    return True, extracted
+            return False, None
 
-            # Thought
-            self.log_thought(thought)
-            self.messages.append({"role": "assistant", "content": reply})
-
-            # Finish
-            if action == "finish":
-                extracted = self.extract_json(reply)
-                if extracted and isinstance(extracted, dict):
-                    if "decision" not in extracted and ("issues" in extracted or "suggestions" in extracted):
-                        extracted["decision"] = "REVISE"
-                    if "decision" in extracted:
-                        self.log_action("finish")
-                        self.log(thought=thought, action="finish", observation="Coordinator completed")
-                        return extracted
-                self.log_error("Invalid json")
-                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
-                continue
-
-            # Execute
-            if action == "bash" and command:
-                self.log_action("bash", command)
-                code, output = self.execute(command)
-
-                # Log
-                self.log(thought=thought, action="bash", command=command, observation=output[:500])
-
-                # Check stuck
-                is_stuck, warning = self.check_stuck(command, code)
-                if is_stuck:
-                    self.log_error(f"Stuck: {warning}. Aborting planning.")
-                    break
-
-                # Observation
-                obs_text = self.render(self.react_prompt, code=code, output=output)
-                obs_text += self.check_exceeded()
-                self.messages.append({"role": "user", "content": obs_text})
-                if warning:
-                    self.messages.append({"role": "user", "content": warning})
-            else:
-                # Error
-                self.log_error("Invalid action")
-                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
-
-        return False
+        return self.loop(finish=finish, default=False)
 
 
 __all__ = ["VulnPlannerAgent"]
