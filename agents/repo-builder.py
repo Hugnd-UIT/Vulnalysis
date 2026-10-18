@@ -37,10 +37,34 @@ class RepoBuilderAgent(BaseAgent):
                         found.append(name)
         return sorted(found)
 
+    def check_stuck(self, command: str, code: int) -> tuple[bool, str]:
+        cmd_norm = " ".join(command.strip().split())
+        self.cmd_history.append((cmd_norm, code))
+
+        consecutive_fails = 0
+        for cmd, ret in reversed(self.cmd_history):
+            if cmd == cmd_norm and ret != 0:
+                consecutive_fails += 1
+            else:
+                break
+
+        if consecutive_fails >= 3:
+            return True, f"Command '{cmd_norm}' failed 3 consecutive times"
+        elif consecutive_fails == 2:
+            return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times consecutively. You MUST change your approach or fix prerequisites before running it again.]"
+
+        recent = self.cmd_history[-6:]
+        fail_count = sum(1 for c, r in recent if c == cmd_norm and r != 0)
+        if fail_count >= 3:
+            return True, f"Command '{cmd_norm}' failed {fail_count} times in the last 6 actions"
+
+        return False, ""
+
     def run(self, repo_path):
         # Reset memory
         self.memory.clear()
         self.step = 0
+        self.cmd_history = []
 
         manifests = self.manifest(repo_path)
 
@@ -76,7 +100,7 @@ class RepoBuilderAgent(BaseAgent):
                     self.log(thought=thought, action="finish", observation="Repo builder completed")
                     return extracted
                 self.log_error("Invalid json")
-                self.messages.append({"role": "user", "content": self.error_prompt})
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
                 continue
 
             # Execute
@@ -87,15 +111,22 @@ class RepoBuilderAgent(BaseAgent):
                 # Log
                 self.log(thought=thought, action="bash", command=command, observation=output[:500])
 
+                # Check stuck
+                is_stuck, warning = self.check_stuck(command, code)
+                if is_stuck:
+                    self.log_error(f"Stuck: {warning}. Aborting build.")
+                    break
+
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
-                if self.step >= self.step_limit - 1:
-                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
+                if warning:
+                    obs_text += f"\n{warning}"
+                obs_text += self.check_exceeded()
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
                 self.log_error("Invalid action")
-                self.messages.append({"role": "user", "content": self.error_prompt})
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
 
         return False
 

@@ -1,6 +1,6 @@
 provider:
   url: https://api.xkiro.com/v1
-  key: sk-xt-f65a3802f68fe0583c492c0dd0caabf14bcea7c1a6a0bc72
+  key: sk-xt-a2f6db5f38bf8a353b4af47ed16d12d1c06790b2d844c904
 
 agents:
   vuln-planner:

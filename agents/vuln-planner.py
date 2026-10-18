@@ -81,7 +81,7 @@ class VulnPlannerAgent(BaseAgent):
                         self.log(thought=thought, action="finish", observation="Coordinator completed")
                         return extracted
                 self.log_error("Invalid json")
-                self.messages.append({"role": "user", "content": self.error_prompt})
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
                 continue
 
             # Execute
@@ -94,13 +94,12 @@ class VulnPlannerAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
-                if self.step >= self.step_limit - 1:
-                    obs_text += "\n[NOTICE: Step limit reached. You MUST output finish with your final result now.]"
+                obs_text += self.check_exceeded()
                 self.messages.append({"role": "user", "content": obs_text})
             else:
                 # Error
                 self.log_error("Invalid action")
-                self.messages.append({"role": "user", "content": self.error_prompt})
+                self.messages.append({"role": "user", "content": self.error_prompt + self.check_exceeded()})
 
         return False
 

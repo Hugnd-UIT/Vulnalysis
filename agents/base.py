@@ -28,7 +28,9 @@ class BaseAgent:
         self.user_prompt = agent_cfg.get("user-prompt", "")
         self.react_prompt = agent_cfg.get("react-prompt", "")
         self.error_prompt = agent_cfg.get("error-prompt", "")
+        self.exceeded_prompt = agent_cfg.get("exceeded-prompt", "")
         self.step_limit = int(agent_cfg.get("step-limit", 200))
+        self.warn_at = int(agent_cfg.get("warn-at", 3))
         self.cost_limit = float(agent_cfg.get("cost-limit", 15.0))
         self.timeout = int(env_cfg.get("timeout", 300))
         self.temperature = float(model_cfg.get("temperature", 0.0))
@@ -50,12 +52,14 @@ class BaseAgent:
             return ""
         try:
             from jinja2 import Template
-            return Template(template).render(**kwargs)
+            text = Template(template).render(**kwargs)
         except Exception:
             text = template
             for k, v in kwargs.items():
                 text = text.replace(f"{{{{{k}}}}}", str(v))
-            return text
+        for k, v in kwargs.items():
+            text = text.replace(f"{{{k}}}", str(v))
+        return text
 
     # Check limits
     def is_step_exceeded(self):
@@ -63,6 +67,13 @@ class BaseAgent:
 
     def is_cost_exceeded(self):
         return tracker.tracker.is_exceeded(self.name, self.cost_limit)
+        
+    def check_exceeded(self, warn_at=None):
+        threshold = warn_at if warn_at is not None else self.warn_at
+        remaining = self.step_limit - self.step
+        if 0 < remaining <= threshold and self.exceeded_prompt:
+            return "\n\n" + self.render(self.exceeded_prompt, remaining=remaining, total=self.step_limit).strip()
+        return ""
 
     # Execute command
     def execute(self, command, timeout=None):
@@ -70,7 +81,7 @@ class BaseAgent:
             return -1, "Sandbox not initialized"
 
         # Run command in sandbox
-        t = timeout or min(self.timeout, 30)
+        t = timeout or self.timeout
         try:
             import shlex
             wrapped = f"timeout {t} bash -c {shlex.quote(command)} < /dev/null"

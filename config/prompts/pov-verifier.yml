@@ -142,6 +142,11 @@ agent:
     1. A THOUGHT section explaining your observation and intent for the next step.
     2. Exactly ONE action - either a `bash` code block like ```bash ... ``` or `finish`.
 
+  exceeded-prompt: |
+    You have only {remaining} rounds left out of {total}. 
+    You MUST call `finish` within the next {remaining} rounds or your analysis will be cut short. 
+    Wrap up your reasoning now and call `finish`.
+
   step-limit: 10
   cost-limit: 15
 
