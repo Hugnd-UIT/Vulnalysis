@@ -41,22 +41,12 @@ class RepoBuilderAgent(BaseAgent):
         cmd_norm = " ".join(command.strip().split())
         self.cmd_history.append((cmd_norm, code))
 
-        consecutive_fails = 0
-        for cmd, ret in reversed(self.cmd_history):
-            if cmd == cmd_norm and ret != 0:
-                consecutive_fails += 1
-            else:
-                break
+        fail_count = sum(1 for c, r in self.cmd_history if c == cmd_norm and r != 0)
 
-        if consecutive_fails >= 3:
-            return True, f"Command '{cmd_norm}' failed 3 consecutive times"
-        elif consecutive_fails == 2:
-            return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times consecutively. You MUST change your approach or fix prerequisites before running it again.]"
-
-        recent = self.cmd_history[-6:]
-        fail_count = sum(1 for c, r in recent if c == cmd_norm and r != 0)
         if fail_count >= 3:
-            return True, f"Command '{cmd_norm}' failed {fail_count} times in the last 6 actions"
+            return True, f"Command '{cmd_norm}' failed {fail_count} times"
+        elif fail_count == 2:
+            return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times. You MUST change your approach or fix prerequisites before running it again.]"
 
         return False, ""
 
@@ -119,10 +109,10 @@ class RepoBuilderAgent(BaseAgent):
 
                 # Observation
                 obs_text = self.render(self.react_prompt, code=code, output=output)
-                if warning:
-                    obs_text += f"\n{warning}"
                 obs_text += self.check_exceeded()
                 self.messages.append({"role": "user", "content": obs_text})
+                if warning:
+                    self.messages.append({"role": "user", "content": warning})
             else:
                 # Error
                 self.log_error("Invalid action")
