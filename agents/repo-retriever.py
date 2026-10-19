@@ -71,7 +71,7 @@ class RepoRetrieverAgent(BaseAgent):
         except Exception:
             return {"nodes": [], "edges": []}
 
-    # Load and slice call flows
+    # Load call flows
     def load_flows(self, flows_path=None, chunk_size=20, output_dir=None):
         path = Path(flows_path) if flows_path else Path("outputs/call-flows.jsonl")
         if not path.exists():

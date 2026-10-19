@@ -73,4 +73,65 @@ def rank(flows):
     return sorted(flows, key=lambda f: score(f), reverse=True)
 
 
-__all__ = ["score", "dedup", "rank"]
+def _parse_line(val):
+    if val is None:
+        return None
+    if isinstance(val, int):
+        return val
+    s = str(val).strip()
+    digits = "".join(c for c in s if c.isdigit())
+    return int(digits) if digits else None
+
+
+def combine(flows):
+    clusters = {}
+    for f in flows:
+        sink = f.get("sink", {}) or {}
+        file_val = str(sink.get("file") or "").strip()
+        line_val = _parse_line(sink.get("line") or sink.get("lines"))
+        func_val = str(sink.get("func") or sink.get("function") or sink.get("operation") or "").strip()
+        var_val = str(sink.get("variable") or "").strip()
+
+        key = (file_val, line_val, func_val)
+        cur_score = score(f)
+        vector = {
+            "id": f.get("id", ""),
+            "score": cur_score,
+            "source": f.get("source", {}) or {},
+            "chain": f.get("chain") or f.get("flow", {}).get("chain", []) or []
+        }
+        if f.get("transforms"):
+            vector["transforms"] = f.get("transforms")
+        if f.get("confidence") is not None:
+            vector["confidence"] = f.get("confidence")
+
+        if key not in clusters:
+            clusters[key] = {
+                "sink": {
+                    "file": file_val,
+                    "line": line_val,
+                    "func": func_val,
+                    "variable": var_val
+                },
+                "vectors": []
+            }
+        elif not clusters[key]["sink"].get("variable") and var_val:
+            clusters[key]["sink"]["variable"] = var_val
+
+        clusters[key]["vectors"].append(vector)
+
+    combined = []
+    for idx, item in enumerate(clusters.values(), 1):
+        sorted_vecs = sorted(item["vectors"], key=lambda v: v.get("score", 0), reverse=True)
+        combined.append({
+            "id": f"CT{idx:02d}",
+            "sink": item["sink"],
+            "primary_vector": sorted_vecs[0],
+            "alternative_vectors": sorted_vecs[1:]
+        })
+
+    combined.sort(key=lambda c: c["primary_vector"].get("score", 0), reverse=True)
+    return combined
+
+
+__all__ = ["score", "dedup", "rank", "combine"]
