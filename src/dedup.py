@@ -1,6 +1,8 @@
 def score(flow):
+    if "primary_vector" in flow:
+        return flow["primary_vector"].get("score", 0)
     sink = flow.get("sink", {}) or {}
-    op = str(sink.get("operation") or sink.get("function") or "").lower()
+    op = str(sink.get("func") or sink.get("operation") or sink.get("function") or "").lower()
     src = flow.get("source", {}) or {}
     ep = str(src.get("ep") or src.get("function") or "").lower()
     chain = flow.get("chain") or flow.get("flow", {}).get("chain", []) or []
@@ -84,8 +86,23 @@ def _parse_line(val):
 
 
 def combine(flows):
-    clusters = {}
+    flat_flows = []
     for f in flows:
+        if "primary_vector" in f and isinstance(f["primary_vector"], dict):
+            sink = f.get("sink", {}) or {}
+            pv = dict(f["primary_vector"])
+            pv["sink"] = sink
+            flat_flows.append(pv)
+            for av in f.get("alternative_vectors", []):
+                if isinstance(av, dict):
+                    av_item = dict(av)
+                    av_item["sink"] = sink
+                    flat_flows.append(av_item)
+        else:
+            flat_flows.append(f)
+
+    clusters = {}
+    for f in flat_flows:
         sink = f.get("sink", {}) or {}
         file_val = str(sink.get("file") or "").strip()
         line_val = _parse_line(sink.get("line") or sink.get("lines"))
@@ -120,17 +137,26 @@ def combine(flows):
 
         clusters[key]["vectors"].append(vector)
 
+    cluster_list = list(clusters.values())
+    for item in cluster_list:
+        item["vectors"].sort(key=lambda v: v.get("score", 0), reverse=True)
+    cluster_list.sort(key=lambda item: item["vectors"][0].get("score", 0) if item["vectors"] else 0, reverse=True)
+
     combined = []
-    for idx, item in enumerate(clusters.values(), 1):
-        sorted_vecs = sorted(item["vectors"], key=lambda v: v.get("score", 0), reverse=True)
+    for idx, item in enumerate(cluster_list, 1):
+        if not item["vectors"]:
+            continue
+        pv = item["vectors"][0]
+        alts = item["vectors"][1:]
         combined.append({
             "id": f"CT{idx:02d}",
             "sink": item["sink"],
-            "primary_vector": sorted_vecs[0],
-            "alternative_vectors": sorted_vecs[1:]
+            "source": pv.get("source", {}) or {},
+            "chain": pv.get("chain", []) or [],
+            "primary_vector": pv,
+            "alternative_vectors": alts
         })
 
-    combined.sort(key=lambda c: c["primary_vector"].get("score", 0), reverse=True)
     return combined
 
 

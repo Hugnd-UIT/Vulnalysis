@@ -2,13 +2,14 @@ import json
 from pathlib import Path
 
 
-from src.dedup import score, dedup, rank
+from src.dedup import score, dedup, rank, combine
 
 
 class PipelineState:
     score = staticmethod(score)
     dedup = staticmethod(dedup)
     rank = staticmethod(rank)
+    combine = staticmethod(combine)
 
     def __init__(self, outputs_path="outputs"):
         self.outputs_path = Path(outputs_path)
@@ -59,7 +60,7 @@ class PipelineState:
                             idx = end
                         except Exception:
                             idx += 1
-        processed = rank(dedup(raw))
+        processed = combine(raw)
         self.flows_file = p
         self.total_flows = len(processed)
         self.index = 0
