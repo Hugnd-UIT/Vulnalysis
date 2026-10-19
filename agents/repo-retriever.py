@@ -71,6 +71,40 @@ class RepoRetrieverAgent(BaseAgent):
         except Exception:
             return {"nodes": [], "edges": []}
 
+    # Load and slice call flows
+    def load_flows(self, flows_path=None, chunk_size=20, output_dir=None):
+        path = Path(flows_path) if flows_path else Path("outputs/call-flows.jsonl")
+        if not path.exists():
+            path = Path("outputs/call-flows.jsonl")
+        if not path.exists():
+            return []
+
+        flows = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        flows.append(json.loads(line))
+                    except Exception:
+                        pass
+
+        if not flows:
+            return []
+
+        chunks = [flows[i:i + chunk_size] for i in range(0, len(flows), chunk_size)]
+
+        if output_dir:
+            out_p = Path(output_dir)
+            out_p.mkdir(parents=True, exist_ok=True)
+            for idx, chunk in enumerate(chunks):
+                chunk_file = out_p / f"call-flows-chunk-{idx+1:02d}.jsonl"
+                with open(chunk_file, "w", encoding="utf-8") as f:
+                    for item in chunk:
+                        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        return chunks
+
     def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None):
         # Reset memory
         self.memory.clear()
