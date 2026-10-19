@@ -102,6 +102,21 @@ def combine(
     grouped: Dict[tuple, dict] = {}
 
     for p in raw_paths:
+        if "src" in p and "dst" in p:
+            src_info = p["src"]
+            dst_info = p["dst"]
+            group_key = (src_info.get("id"), dst_info.get("file"), dst_info.get("line"))
+            if group_key not in grouped:
+                grouped[group_key] = {
+                    "src": src_info,
+                    "dst": dst_info,
+                    "paths": []
+                }
+            for chain in p.get("paths", []):
+                if chain and chain not in grouped[group_key]["paths"]:
+                    grouped[group_key]["paths"].append(chain)
+            continue
+
         leaf = p.get("leaf") or {}
         call_site = p.get("call_site") or {}
         nodes = p.get("nodes") or []
@@ -125,7 +140,16 @@ def combine(
             if chain_list and chain_list not in grouped[group_key]["paths"]:
                 grouped[group_key]["paths"].append(chain_list)
 
-    combined_list = list(grouped.values())
+    from collections import Counter
+    file_counts = Counter(item["dst"]["file"] or "" for item in grouped.values())
+    combined_list = sorted(
+        grouped.values(),
+        key=lambda item: (
+            -file_counts[item["dst"]["file"] or ""],
+            item["dst"]["file"] or "",
+            item["dst"]["line"] or 0
+        )
+    )
 
     if dest:
         out = Path(dest)
