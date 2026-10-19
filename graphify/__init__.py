@@ -31,6 +31,8 @@ def __getattr__(name: str):
         'scores': ('graphify.cluster', 'scores'),
         'god': ('graphify.analyze', 'god'),
         'json': ('graphify.export', 'json'),
+        'flatten': ('graphify.src.flatten', 'flatten'),
+        'combine': ('graphify.src.combine', 'combine'),
     }
 
     if name in targets:
@@ -102,6 +104,7 @@ def callgraph(target: str | Path, output: str | Path | None = None, flow: str | 
         dest.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
 
     from graphify.src.flatten import flatten
+    from graphify.src.combine import combine
 
     flow_dest = None
     if flow:
@@ -110,7 +113,8 @@ def callgraph(target: str | Path, output: str | Path | None = None, flow: str | 
         dest = Path(output).resolve()
         flow_dest = dest.with_name('call-flows.jsonl')
 
-    flows = flatten(result, dest=flow_dest, fmt='jsonl') if flow_dest else flatten(result)
+    raw_flows = flatten(result)
+    flows = combine(raw_flows, dest=flow_dest, fmt='jsonl') if flow_dest else combine(raw_flows)
     result['flows'] = flows
 
     return result

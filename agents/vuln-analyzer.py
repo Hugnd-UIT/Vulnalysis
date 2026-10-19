@@ -25,9 +25,10 @@ class VulnAnalyzerAgent(BaseAgent):
         # Feedback
         if self.messages and feedback:
             self.step = 0
+            self.cmd_history = []
             obs = self.render(
                 self.react_prompt,
-                feedback=feedback_str,
+                coordinator=feedback_str,
                 code=0,
                 output="",
             )

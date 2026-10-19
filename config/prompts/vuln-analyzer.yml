@@ -130,10 +130,12 @@ agent:
     ```
 
   react-prompt: |
-    {% if coordinator_feedback or feedback -%}
-    <coordinator-feedback>
-      {{ coordinator_feedback or feedback }}
-    </coordinator-feedback>
+    {% if coordinator -%}
+
+    <coordinator>
+      {{ coordinator }}
+    </coordinator>
+
     {%- endif %}
 
     <return-code>

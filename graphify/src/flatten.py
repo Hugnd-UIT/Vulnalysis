@@ -105,7 +105,7 @@ def walk(
     paths: List[dict] = []
     seen: Set[str] = set()
 
-    def record(stack: List[str], cycle: bool = False):
+    def record(stack: List[str], edge_stack: List[dict], cycle: bool = False):
         if len(stack) < 2 or len(paths) >= max_total_paths:
             return
 
@@ -122,12 +122,17 @@ def walk(
         names = [format_node(nid) for nid in stack]
         root_id = stack[0]
         leaf_id = stack[-1]
+        last_edge = edge_stack[-1] if edge_stack else {}
 
         item = {
             "id": f"P{len(paths) + 1:04d}",
             "len": len(stack),
             "root": nodes.get(root_id),
             "leaf": nodes.get(leaf_id),
+            "call_site": {
+                "file": last_edge.get("file", ""),
+                "lines": last_edge.get("lines", "")
+            },
             "chain": names,
             "nodes": [nodes.get(nid) for nid in stack],
             "cycle": cycle
@@ -136,18 +141,18 @@ def walk(
         paths.append(item)
         bucket.append(item)
 
-    def dfs(curr: str, stack: List[str], active: Set[str]):
+    def dfs(curr: str, stack: List[str], active: Set[str], edge_stack: List[dict]):
         if len(paths) >= max_total_paths:
             return
         if limit is not None and len(bucket) >= limit:
             return
         if len(stack) >= max_depth:
-            record(stack, cycle=False)
+            record(stack, edge_stack, cycle=False)
             return
 
         children = adj.get(curr, [])
         if not children:
-            record(stack, cycle=False)
+            record(stack, edge_stack, cycle=False)
             return
 
         valid = False
@@ -157,27 +162,29 @@ def walk(
             tgt = edge["target"]
 
             if tgt in active:
-                record(stack + [tgt], cycle=True)
+                record(stack + [tgt], edge_stack + [edge], cycle=True)
                 valid = True
                 continue
 
             valid = True
             active.add(tgt)
             stack.append(tgt)
+            edge_stack.append(edge)
 
-            dfs(tgt, stack, active)
+            dfs(tgt, stack, active, edge_stack)
 
+            edge_stack.pop()
             stack.pop()
             active.remove(tgt)
 
         if not valid:
-            record(stack, cycle=False)
+            record(stack, edge_stack, cycle=False)
 
     for root in sorted(roots):
         if len(paths) >= max_total_paths:
             break
         bucket: List[dict] = []
-        dfs(root, [root], {root})
+        dfs(root, [root], {root}, [])
 
     return paths
 

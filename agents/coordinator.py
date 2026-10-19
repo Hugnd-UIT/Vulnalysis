@@ -27,6 +27,7 @@ class CoordinatorAgent(BaseAgent):
         # Feedback
         if self.messages and (analyzer or verifier):
             self.step = 0
+            self.cmd_history = []
             render_kwargs = {"code": 0, "output": ""}
             if analyzer:
                 render_kwargs["analyzer"] = json.dumps(analyzer, indent=2, ensure_ascii=False) if isinstance(analyzer, (dict, list)) else str(analyzer)

@@ -30,6 +30,7 @@ class PovGeneratorAgent(BaseAgent):
         # Feedback
         if self.messages and feedback:
             self.step = 0
+            self.cmd_history = []
             obs = self.render(
                 self.react_prompt,
                 verifier=feedback_str,

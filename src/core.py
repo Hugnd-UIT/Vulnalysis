@@ -128,7 +128,6 @@ class Orchestrator:
         feedback = None
 
         self.state.flow_dir(flow_id)
-        self.state.pov_round = 0
         pov_script = f"{self.outputs_container}/{flow_id}/scripts.py"
         result_file = f"{self.outputs_container}/{flow_id}/results.json"
 
@@ -252,6 +251,13 @@ class Orchestrator:
                     "status": "UNCONFIRMED",
                 }
                 self.state.save_hypothesis(flow_id, candidate)
+
+            if candidate and isinstance(candidate, dict):
+                if candidate.get("decision", "").upper() == "CONCEDE" or (round_num > 1 and candidate.get("status") == "UNCONFIRMED"):
+                    self.state.update_status(flow_id, "FAILED")
+                    self.state.reject(reason=candidate.get("reason", "Analyzer conceded: not vulnerable"))
+                    return None
+
             self.state.set_candidate(candidate)
 
             feedback = coordinator_agent.run(
@@ -268,16 +274,10 @@ class Orchestrator:
             decision = feedback.get("decision", "").upper()
             log.info(f"Coordinator: {decision}")
 
-            # Revise
-            if decision == "REVISE" or (decision == "REJECT" and round_num == 1):
+            # Revise or Reject
+            if decision in ("REVISE", "REJECT"):
                 prev_feedback = feedback
                 continue
-
-            # Reject
-            if decision == "REJECT":
-                self.state.update_status(flow_id, "FAILED")
-                self.state.reject(reason=json.dumps(feedback.get("issues", [])))
-                return None
 
             approved = feedback.get("approved_hypothesis") or candidate
             self.state.approve(approved)
