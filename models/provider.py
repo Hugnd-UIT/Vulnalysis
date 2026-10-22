@@ -21,6 +21,7 @@ class OpenAI:
         # Load config
         cfg = config(config_path)
         provider_cfg = cfg.get("provider", {}) or {}
+        self.agent_name = agent_name or ""
 
         # Setup url
         self.url = url or provider_cfg.get("url") or None
@@ -64,6 +65,18 @@ class OpenAI:
             if pf and pf.get("blockReason"):
                 return "[!] Block by policy"
             return "[!] Block by policy" if not getattr(response, "choices", None) else ""
+
+        # Track usage
+        usage = getattr(response, "usage", None)
+        if usage and self.agent_name:
+            prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+            completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+            try:
+                from models import tracker
+                tracker.tracker.track(self.agent_name, prompt_tokens, completion_tokens, model=self.model)
+            except Exception:
+                pass
+
         choice = response.choices[0]
         finish_reason = getattr(choice, "finish_reason", None)
         msg = choice.message
@@ -89,6 +102,7 @@ class Anthropic:
         # Load config
         cfg = config(config_path)
         provider_cfg = cfg.get("provider", {}) or {}
+        self.agent_name = agent_name or ""
 
         # Setup url
         self.url = url or provider_cfg.get("url") or None
@@ -139,6 +153,17 @@ class Anthropic:
             messages=formatted_messages,
             **call_kwargs
         )
+
+        # Track usage
+        usage = getattr(response, "usage", None)
+        if usage and self.agent_name:
+            prompt_tokens = getattr(usage, "input_tokens", 0) or 0
+            completion_tokens = getattr(usage, "output_tokens", 0) or 0
+            try:
+                from models import tracker
+                tracker.tracker.track(self.agent_name, prompt_tokens, completion_tokens, model=self.model)
+            except Exception:
+                pass
 
         # Extract response
         text_parts = [block.text for block in response.content if hasattr(block, "text")]

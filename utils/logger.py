@@ -32,10 +32,12 @@ def format_record(record):
     elif "Coordinator:" in raw:
         parts = raw.split("Coordinator: ", 1)
         dec = parts[1].strip()
-        if dec in ("CONFIRMED", "APPROVE"):
+        if dec in ("CONFIRMED", "ACCEPT"):
             c_dec = f"{GREEN}{dec}{RESET}"
-        elif dec in ("REVISE", "REPLAN"):
+        elif dec in ("REVISE", "REGENERATE"):
             c_dec = f"{YELLOW}{dec}{RESET}"
+        elif dec in ("REJECT", "UNCONFIRMED"):
+            c_dec = f"{RED}{dec}{RESET}"
         elif dec:
             c_dec = f"{RED}{dec}{RESET}"
         else:

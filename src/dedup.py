@@ -5,6 +5,7 @@ def score(flow):
     op = str(sink.get("func") or sink.get("operation") or sink.get("function") or "").lower()
     src = flow.get("source", {}) or {}
     ep = str(src.get("ep") or src.get("function") or "").lower()
+    var = str(src.get("variable") or "").lower()
     chain = flow.get("chain") or flow.get("flow", {}).get("chain", []) or []
 
     pts = 2
@@ -46,7 +47,7 @@ def score(flow):
         "recv", "header", "cookie", "input", "args", "form",
         "upload", "file", "url", "socket", "req"
     )
-    if any(k in ep for k in src_keys):
+    if any(k in ep for k in src_keys) or any(k in var for k in src_keys):
         pts += 3
 
     chain_len = len(chain)

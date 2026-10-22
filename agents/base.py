@@ -205,7 +205,7 @@ class BaseAgent:
                 command = ""
         elif re.search(r"^\s*finish\s*$", text, re.MULTILINE | re.IGNORECASE) or re.search(r"(?:ACTION|Action)[\s:\-]+finish\b", text, re.IGNORECASE) or re.search(r"\bfinish\s*$", text.strip(), re.IGNORECASE):
             action = "finish"
-        elif self.extract_json(text):
+        elif self.extract_json(text) is not None:
             action = "finish"
 
         return thought, action, command
@@ -214,7 +214,7 @@ class BaseAgent:
     def extract_json(self, text):
         if not text:
             return None
-        match = re.search(r"```(?:json|finish)?\s*(\{[\s\S]*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+        match = re.search(r"```(?:json|finish)?\s*([\{\[][\s\S]*?[\}\]])\s*```", text, re.DOTALL | re.IGNORECASE)
         if match:
             try:
                 return json.loads(match.group(1))
@@ -224,6 +224,12 @@ class BaseAgent:
         if match:
             try:
                 return json.loads(match.group(1))
+            except Exception:
+                pass
+        arr_match = re.search(r"(\[[\s\S]*\])", text)
+        if arr_match:
+            try:
+                return json.loads(arr_match.group(1))
             except Exception:
                 pass
         return None

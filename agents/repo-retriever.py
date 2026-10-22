@@ -18,64 +18,54 @@ class RepoRetrieverAgent(BaseAgent):
 
     # Scan files
     def scan(self, repo_path):
+        if self.sandbox:
+            code, out = self.execute(f"find {repo_path} -type f -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/venv/*'")
+            if code == 0:
+                files = []
+                for line in out.splitlines():
+                    clean = line.strip()
+                    if clean:
+                        rel = clean[len(repo_path):].lstrip("/")
+                        files.append(rel)
+                return sorted(files)
+
         target = Path(repo_path).resolve()
-
-        try:
-            from graphify.extract import collect
-            non_code = {".md", ".mdx", ".qmd", ".skill", ".json", ".txt", ".rst"}
-            return sorted([
-                p.relative_to(target).as_posix()
-                for p in collect(target)
-                if p.suffix.lower() not in non_code
-            ])
-        except Exception:
-            pass
-
-        files = []
-        ignored = {
-            ".git", "__pycache__", "venv", ".venv",
-            "node_modules", ".idea", ".vscode", "build", "dist"
-        }
-        exts = (
-            ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".cu", ".cuh",
-            ".py", ".go", ".rs", ".java", ".kt", ".kts", ".scala",
-            ".cs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx",
-            ".php", ".rb", ".rake", ".swift", ".zig", ".m", ".mm",
-            ".sh", ".bash", ".ps1", ".psm1", ".dart", ".ex", ".exs",
-            ".erl", ".hrl", ".sol", ".jl", ".ml", ".mli", ".r",
-            ".sql", ".lua", ".luau", ".cls", ".trigger", ".tf", ".hcl"
-        )
-
-        # Walk directory
-        for root, dirs, names in os.walk(target):
-            dirs[:] = [d for d in dirs if d not in ignored]
-            for f in names:
-                if f.lower().endswith(exts):
+        if target.exists():
+            files = []
+            ignored = {".git", "__pycache__", "venv", ".venv", "node_modules", "build", "dist"}
+            for root, dirs, names in os.walk(target):
+                dirs[:] = [d for d in dirs if d not in ignored]
+                for f in names:
                     rel = Path(root, f).relative_to(target).as_posix()
                     files.append(rel)
+            return sorted(files)
 
-        return sorted(files)
+        return []
 
     # Load call graph
     def load_graph(self, repo_path, graph_path=None):
-        path = Path(graph_path) if graph_path else Path("outputs/call-graph.json")
-        if not path.exists():
-            path = Path("outputs/call-graph.json")
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
+        path_str = graph_path or "/outputs/call-graph.json"
+        if self.sandbox:
+            code, out = self.execute(f"cat {path_str} 2>/dev/null")
+            if code == 0 and out.strip():
+                try:
+                    return json.loads(out)
+                except Exception:
+                    pass
 
-        try:
-            import graphify
-            return graphify.callgraph(repo_path)
-        except Exception:
-            return {"nodes": [], "edges": []}
+        path = Path(path_str) if Path(path_str).exists() else Path("outputs/call-graph.json")
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+
+        return {"nodes": [], "edges": []}
 
     # Load call flows
     def load_flows(self, flows_path=None, chunk_size=20, output_dir=None):
-        path = Path(flows_path) if flows_path else Path("outputs/call-flows.jsonl")
-        if not path.exists():
-            path = Path("outputs/call-flows.jsonl")
+        path = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
         if not path.exists():
             return []
 

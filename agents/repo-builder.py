@@ -15,7 +15,6 @@ class RepoBuilderAgent(BaseAgent):
         )
 
     def manifest(self, repo_path):
-        target = Path(repo_path).resolve()
         manifest_names = {
             "Makefile", "makefile", "GNUmakefile",
             "CMakeLists.txt", "configure.ac", "configure.in", "configure",
@@ -24,16 +23,19 @@ class RepoBuilderAgent(BaseAgent):
             "Cargo.toml", "go.mod", "pom.xml", "build.gradle"
         }
         found = []
-        if target.exists():
-            for item in target.iterdir():
-                if item.name in manifest_names:
-                    found.append(item.name)
-        elif self.sandbox:
+        if self.sandbox:
             code, out = self.execute(f"ls -a {repo_path}")
             if code == 0:
                 for name in out.split():
                     if name in manifest_names:
                         found.append(name)
+                return sorted(found)
+
+        target = Path(repo_path).resolve()
+        if target.exists():
+            for item in target.iterdir():
+                if item.name in manifest_names:
+                    found.append(item.name)
         return sorted(found)
 
     def run(self, repo_path):

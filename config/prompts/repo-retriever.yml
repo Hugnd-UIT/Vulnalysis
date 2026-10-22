@@ -21,29 +21,24 @@ agent:
     - Taint flows: Available at {{taint_flows}}.
 
     ## Goal
-    Use pre-generated call graph and flows to systematically trace and extract
-    all complete taint flows from external input entry points along call chains
-    to sensitive sink operations.
+    Systematically explore pre-generated call graph and call flows to trace and extract all complete taint flows from entry points to sinks.
+    Verify candidate paths against source code on disk, ensuring complete coverage of untrusted data propagation.
 
     ## Workflow
-    1. Read one call chain at a time from {{call_flows}} using tools like `jq`, `cat`, or `python3`.
-    2. Trace functions along the chain and inspect source code to bridge hidden calls.
-    3. Audit source and sink: Suspect every unverified path; verify untrusted input and sensitive sink operations with concrete code evidence.
-    4. Append the structured taint flow directly to {{taint_flows}}.
-    5. Repeat for each chain in {{call_flows}}, then call `finish`.
+    1. Read candidate call flows incrementally from {{call_flows}} using tools like `jq` or `python3`.
+    2. Trace functions along the call chain on disk to bridge unlinked calls, callbacks, or dynamic dispatches.
+    3. Inspect the source entry point (CLI argument, HTTP route handler, network socket, file input, or exported API) to confirm untrusted input ingestion.
+    4. Inspect the destination sink (command execution, database query, file I/O, memory operation, or privileged call) to confirm a dangerous operation.
+    5. Append each validated taint flow as a single-line JSON object into {{taint_flows}}.
+    6. Repeat for all candidate chains in {{call_flows}}, then output `finish` adhering to schema.
 
     ## Scope - STRICT
-    - Bridge missing call chain links like function pointers or dynamic dispatches.
-    - Navigate strictly along paths in {{call_flows}}; do not wander into unrelated files.
-    - Exclude binary files and build artifacts (e.g. use `grep -I --exclude-dir=build` or focus on source folders like `src/`).
-    - Locate sources, transforms, and sinks; do not classify CWEs or attempt exploit synthesis.
-    - Group related operations on the same buffer into one flow pointing to the exact sink line.
-    - Every path, function, and line number must exist on disk; use null for unknowns.
+    - Focus strictly on tracing paths present in call flows; do not wander into unrelated files.
+    - Base all reasoning and outputs strictly on concrete source code found on disk.
+    - Do not modify target source code; interact strictly through inspection tools in the sandbox.
+    - Emit `finish` ONLY when all candidate call chains in {{call_flows}} have been fully inspected.
 
     ## Schema
-    Write your discovered taint flows into {{taint_flows}} incrementally using bash like
-    `cat << 'EOF' >> {{taint_flows}}`
-    Each taint flow is recorded as a single JSON object per line.
 
     ```json
     {

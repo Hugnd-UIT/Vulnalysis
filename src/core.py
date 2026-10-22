@@ -47,7 +47,7 @@ class Orchestrator:
             flows_out = self.outputs_path / "call-flows.jsonl"
             graphify.callgraph(str(self.repo), str(graph_out), flow=str(flows_out))
         except Exception as e:
-            log.warning(f"Graphify generation skipped: {e}")
+            log.warning(f"Graphify skipped: {e}")
 
         retriever_result = [None]
         builder_result = [None]
@@ -120,12 +120,11 @@ class Orchestrator:
         return retriever_result[0], True
 
     # Phase 3
-    def phase_pov(self, hypothesis):
-        flow_id = hypothesis.get("id") or hypothesis.get("flow_id") or self.state.flow.get("id", f"flow-{self.state.index}")
+    def phase_pov(self, hypothesis, feedback=None):
+        flow_id = hypothesis.get("id") or (self.state.flow.get("id") if self.state.flow else f"flow-{self.state.index}")
         log.info("=== Dynamic analyzing ===")
 
         from agents import generator, verifier
-        feedback = None
 
         self.state.flow_dir(flow_id)
         pov_script = f"{self.outputs_container}/{flow_id}/scripts.py"
@@ -148,7 +147,7 @@ class Orchestrator:
 
             # Run generator
             harness_data = self.state.harness if self.state.harness and self.state.harness.get("found") else None
-            gen_agent.run(
+            gen_res = gen_agent.run(
                 self.repo_container,
                 hypothesis,
                 pov_script=pov_script,
@@ -160,11 +159,25 @@ class Orchestrator:
             script_code = self.state.load_script(flow_id)
             pov_result = self.state.load_results(flow_id) or {}
 
-            res_data = pov_result.get(f"res_{round_num}") or {
-                "exit_code": pov_result.get("exit_code", 0),
-                "output": pov_result.get("output", ""),
-                "status": "EXECUTED",
-            }
+            res_data = None
+            if isinstance(gen_res, dict) and isinstance(gen_res.get("res"), dict):
+                res_data = gen_res["res"]
+            elif isinstance(pov_result.get("res"), dict):
+                res_data = pov_result["res"]
+            elif isinstance(pov_result.get(f"res_{round_num}"), dict):
+                res_data = pov_result[f"res_{round_num}"]
+            elif isinstance(pov_result, dict) and any(k in pov_result for k in ("exit_code", "output", "status")):
+                res_data = {
+                    "exit_code": pov_result.get("exit_code"),
+                    "output": pov_result.get("output", ""),
+                    "status": pov_result.get("status"),
+                }
+            else:
+                res_data = {
+                    "exit_code": None,
+                    "output": "",
+                    "status": None,
+                }
 
             self.state.record(
                 flow_id=flow_id,
@@ -183,21 +196,21 @@ class Orchestrator:
             )
 
             if not verdict or not isinstance(verdict, dict):
-                log.warning("Verifier produced no verdict")
+                log.warning("Verifier no verdict")
                 feedback = {"decision": "RETRY", "issues": ["No verdict produced"], "suggestions": ["Re-run test"]}
                 continue
 
             last_verdict = verdict
             decision = verdict.get("decision", "").upper()
-            if decision in ("CONFIRMED", "FAILED") or ("alignment" in verdict and "issues" not in verdict):
-                log.info("Verifier produced report to Coordinator")
+            if decision in ("CONFIRMED", "UNCONFIRMED") or ("alignment" in verdict and "issues" not in verdict):
+                log.info(f"Verifier feedback to coordinator: {decision}")
                 return verdict
 
             # Retry with feedback
-            log.info("Verifier produced feedback to PoV")
+            log.info("Verifier feedback to PoV generator")
             feedback = verdict
 
-        return last_verdict or {"decision": "FAILED", "reason": "PoV rounds exhausted"}
+        return last_verdict or {"decision": "UNCONFIRMED", "reason": "PoV rounds exhausted"}
 
     # Phase 2
     def phase_analysis(self, taint_flow):
@@ -242,21 +255,20 @@ class Orchestrator:
             if not candidate:
                 candidate = {
                     "id": flow_id,
-                    "title": taint_flow.get("title", f"Flow {flow_id}"),
-                    "cwe": taint_flow.get("cwe") or ["CWE-UNKNOWN"],
-                    "description": "Analyzer concluded investigation without formulating a vulnerability hypothesis",
+                    "verdict": "BENIGN",
+                    "title": taint_flow.get("title", ""),
+                    "cwe": taint_flow.get("cwe") or [],
+                    "description": "",
                     "source": taint_flow.get("source", {}),
                     "sink": taint_flow.get("sink", {}),
-                    "flow": {"chain": taint_flow.get("chain", [])},
+                    "flow": taint_flow.get("flow", {"chain": taint_flow.get("chain", [])}),
                     "status": "UNCONFIRMED",
                 }
                 self.state.save_hypothesis(flow_id, candidate)
 
-            if candidate and isinstance(candidate, dict):
-                if candidate.get("decision", "").upper() == "CONCEDE" or (round_num > 1 and candidate.get("status") == "UNCONFIRMED"):
-                    self.state.update_status(flow_id, "FAILED")
-                    self.state.reject(reason=candidate.get("reason", "Analyzer conceded: not vulnerable"))
-                    return None
+            analyzer_verdict = str(candidate.get("verdict", "")).upper()
+            if not analyzer_verdict:
+                analyzer_verdict = "BENIGN" if candidate.get("status") == "UNCONFIRMED" else "VULNERABLE"
 
             self.state.set_candidate(candidate)
 
@@ -268,57 +280,83 @@ class Orchestrator:
             )
 
             if not feedback or not isinstance(feedback, dict):
-                log.warning("Coordinator produced no valid feedback")
+                log.warning("Coordinator no feedback")
                 break
 
             decision = feedback.get("decision", "").upper()
             log.info(f"Coordinator: {decision}")
 
-            # Revise or Reject
-            if decision in ("REVISE", "REJECT"):
-                prev_feedback = feedback
-                continue
+            # Coordinator accepts
+            if decision == "ACCEPT":
+                approved = candidate
+                self.state.approve(approved)
+                self.state.save_hypothesis(flow_id, approved)
 
-            approved = feedback.get("approved_hypothesis") or candidate
-            self.state.approve(approved)
-            self.state.save_hypothesis(flow_id, approved)
+                verdict = self.phase_pov(approved)
 
-            verdict = self.phase_pov(approved)
+                coord_verdict = coordinator_agent.run(
+                    self.repo_container,
+                    approved,
+                    taint_flow,
+                    verifier=verdict,
+                )
 
-            coord_verdict = coordinator_agent.run(
-                self.repo_container,
-                approved,
-                taint_flow,
-                verifier=verdict,
-            )
+                if not coord_verdict or not isinstance(coord_verdict, dict):
+                    coord_verdict = verdict or {"decision": "UNCONFIRMED"}
 
-            if not coord_verdict or not isinstance(coord_verdict, dict):
-                coord_verdict = verdict or {"decision": "FAILED"}
+                coord_decision = coord_verdict.get("decision", "").upper()
+                log.info(f"Coordinator finished: {coord_decision}")
 
-            coord_decision = coord_verdict.get("decision", "").upper()
-            if not coord_decision and isinstance(coord_verdict, dict):
-                alignment = coord_verdict.get("alignment", {})
-                if isinstance(alignment, dict) and alignment.get("location_match") and alignment.get("mechanism_match"):
-                    coord_decision = "CONFIRMED"
-                    coord_verdict["decision"] = "CONFIRMED"
+                # Coordinator confirms
+                if coord_decision == "CONFIRMED":
+                    self.state.update_status(flow_id, "CONFIRMED")
+                    self.state.confirm(coord_verdict)
+                    return coord_verdict
 
-            log.info(f"Coordinator: {coord_decision}")
+                # Coordinator requests PoV regeneration
+                if coord_decision == "REGENERATE":
+                    log.info("Coordinator feedback to PoV generator")
+                    regen_verdict = self.phase_pov(approved, feedback=coord_verdict)
+                    final_coord_verdict = coordinator_agent.run(
+                        self.repo_container,
+                        approved,
+                        taint_flow,
+                        verifier=regen_verdict,
+                    )
+                    final_decision = (final_coord_verdict or {}).get("decision", "").upper()
+                    if final_decision == "CONFIRMED":
+                        self.state.update_status(flow_id, "CONFIRMED")
+                        self.state.confirm(final_coord_verdict)
+                        return final_coord_verdict
 
-            # Coordinator confirms
-            if coord_decision in ("CONFIRMED", "APPROVE"):
-                self.state.update_status(flow_id, "CONFIRMED")
-                self.state.confirm(coord_verdict)
-                return coord_verdict
+                # Coordinator revision
+                if coord_decision == "REVISE":
+                    prev_feedback = coord_verdict
+                    continue
 
-            # Coordinator revision
-            if coord_decision in ("REVISE", "REPLAN"):
-                prev_feedback = coord_verdict
-                continue
+                # Coordinator rejects
+                self.state.update_status(flow_id, "FAILED")
+                self.state.reject(reason=coord_verdict.get("reason", "Coordinator rejected verdict"))
+                return None
 
             # Coordinator rejects
-            self.state.update_status(flow_id, "FAILED")
-            self.state.reject(reason=coord_verdict.get("reason", "Coordinator rejected verdict"))
-            return None
+            if decision == "REJECT":
+                if analyzer_verdict == "BENIGN":
+
+                    # Consensus
+                    self.state.update_status(flow_id, "FAILED")
+                    self.state.reject(reason=feedback.get("reason", "Consensus: not vulnerable"))
+                    return None
+                else:
+
+                    # Disagreement
+                    prev_feedback = feedback
+                    continue
+
+            # Coordinator revision
+            if decision == "REVISE":
+                prev_feedback = feedback
+                continue
 
         log.warning("Debate rounds exhausted without approval")
         self.state.update_status(flow_id, "FAILED")
@@ -339,20 +377,27 @@ class Orchestrator:
             flow = entry.get("flow", {}) or {}
             flow_id = hyp.get("id") or flow.get("id", "")
             verdict = entry.get("verdict", {}) or {}
-            sink = hyp.get("sink", {}) or {}
-            source = hyp.get("source", {}) or {}
+            sink = verdict.get("sink") or hyp.get("sink", {}) or {}
+            source = verdict.get("source") or hyp.get("source", {}) or {}
+
+            cwe_raw = verdict.get("cwe") or hyp.get("cwe", "Unknown")
+            cwe_str = ", ".join(cwe_raw) if isinstance(cwe_raw, list) else str(cwe_raw)
+            title = verdict.get("title") or hyp.get("title", f"Vulnerability {flow_id}")
+            description = verdict.get("description") or hyp.get("description", "")
+            remediation = verdict.get("remediation") or hyp.get("remediation", "")
+
             vuln = {
                 "id": flow_id,
-                "cwe": hyp.get("cwe", "Unknown"),
-                "title": hyp.get("title", hyp.get("cwe", "Vulnerability")),
-                "description": hyp.get("description", ""),
+                "cwe": cwe_str,
+                "title": title,
+                "description": description,
                 "source": source,
                 "sink": sink,
                 "flow": hyp.get("flow", {}),
                 "hint": hyp.get("hint", ""),
                 "expected": hyp.get("expected", ""),
                 "oracle": hyp.get("oracle", {}) or {},
-                "remediation": hyp.get("remediation", ""),
+                "remediation": remediation,
                 "script_path": f"/outputs/{flow_id}/scripts.py",
                 "results_path": f"/outputs/{flow_id}/results.json",
                 "verdict": verdict,

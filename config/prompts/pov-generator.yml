@@ -29,22 +29,25 @@ agent:
     ```
 
     ## Goal
-    Construct a standalone reproduction script to trigger the target vulnerability,
-    capture execution evidence such as crash signal or error trace,
-    and record the attempt into the result ledger.
+    Construct a standalone, reproducible reproduction script to trigger the target vulnerability, and record the raw execution trace.
+    Execute the script inside the sandbox and report the execution status:
+    - EXECUTED: Reproduction script ran to completion and captured runtime output evidence.
+    - ERROR: Reproduction script terminated prematurely with an unexpected runtime or syntax error.
+    - TIMEOUT: Reproduction script exceeded the allocated execution time limit without terminating.
 
     ## Workflow
-    1. Inspect the target runtime environment and verify execution arguments or import methods.
-    2. Review preconditions, input constraints, oracle command template, and available harness.
-    3. Write the reproduction script to {{pov_script}} that supplies the test input and runs target.
-    4. Execute the script inside the sandbox and capture exit code, stdout, and stderr.
-    5. Append execution results to {{pov_result}} and conclude with `finish`.
+    1. Inspect the approved hypothesis preconditions, entry point parameters, oracle command template, and available harness.
+    2. Craft a self-contained reproduction script at {{pov_script}} (in Python, Bash, or language appropriate to the target) that prepares the trigger input, manages target invocation, and executes the test.
+    3. Execute the reproduction script inside the sandbox environment, capturing exit code, stdout, and stderr.
+    4. Record execution results into {{pov_result}}.
+    5. If receiving retry feedback from Verifier or Coordinator, refine payload structure, headers, arguments, or environment settings and re-execute.
+    6. Output `finish` containing the executed command, process results, and status (`EXECUTED`, `ERROR`, or `TIMEOUT`) adhering to schema.
 
     ## Scope - STRICT
-    - The script must be self-contained, reproducible, and execute in a single run.
-    - Do not modify the target codebase; interact strictly through external input surfaces.
-    - Focus strictly on triggering the specific vulnerability described in the hypothesis.
-    - All commands must execute within the sandbox environment.
+    - Focus strictly on crafting self-contained reproduction scripts for the designated hypothesis.
+    - Base all reasoning and outputs strictly on concrete parameter formats and preconditions from the hypothesis.
+    - Do not modify target source code; interact strictly through external input surfaces within the sandbox.
+    - Emit `finish` ONLY when the reproduction script has been executed and outputs are fully recorded.
 
     ## Schema
 

@@ -22,7 +22,9 @@ class PovVerifierAgent(BaseAgent):
     ):
         flow_id = hypothesis.get("id")
         pov_script = pov_script or f"/outputs/{flow_id}/scripts.py"
-        pov_result = pov_result if isinstance(pov_result, str) else f"/outputs/{flow_id}/results.json"
+        default_result_path = f"/outputs/{flow_id}/results.json"
+        if pov_result is None:
+            pov_result = default_result_path
         pov_str = json.dumps(pov_result, indent=2, ensure_ascii=False) if isinstance(pov_result, (dict, list)) else str(pov_result or "")
 
         # Feedback
@@ -46,7 +48,7 @@ class PovVerifierAgent(BaseAgent):
                 repo=str(repo),
                 hypothesis=hyp_str,
                 pov_script=pov_script,
-                pov_result=pov_result,
+                pov_result=pov_str,
             )
             self.messages = [
                 {"role": "system", "content": self.system_prompt},

@@ -43,7 +43,6 @@ class CoordinatorAgent(BaseAgent):
                 self.user_prompt,
                 repo=str(repo),
                 hypotheses=hyp_str,
-                candidate=hyp_str,
                 taint_flow=flow_str,
             )
             self.messages = [

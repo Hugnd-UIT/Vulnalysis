@@ -23,29 +23,29 @@ agent:
     ```
 
     ## Goal
-    Audit this taint flow slice to verify if untrusted input propagates from entry point
-    to sink without validation, classify the CWE weakness, and formulate a complete
-    hypothesis with preconditions and expected failure behavior.
+    Audit the assigned taint flow slice to determine whether untrusted input reaches the sink without validation, and classify the CWE weakness.
+    Synthesize findings into a structured hypothesis with verification oracle, defending candidate conclusions against Coordinator feedback.
 
     ## Workflow
-    1. Inspect the sink function to identify the dangerous operation and format.
-    2. Inspect the entry point to verify how external input is ingested.
-    3. Trace intermediate transformations, bounds checks, and sanitizers.
-    4. Synthesize the finding into a complete structured hypothesis.
-    5. Write the hypothesis to {{hypotheses}} and conclude with `finish`.
+    1. Inspect the assigned taint flow slice, locating the source entry point, intermediate calls, and sink function on disk.
+    2. Trace variable propagation and data transformations along the path to verify the absence of validation, filtering, or bounds checks.
+    3. Determine the vulnerability root cause and classify the weakness under the appropriate CWE identifier.
+    4. Synthesize the finding into a structured hypothesis with preconditions, trigger format, expected behavior, and verification oracle.
+    5. If Coordinator returns feedback (`REVISE` or `REJECT`), investigate the challenged code path: formulate counter-arguments with code citations in `defense` and maintain `verdict: "VULNERABLE"`, or if the code is proven safe, set `verdict: "BENIGN"` and articulate the defense rationale.
+    6. Output `finish` containing the structured hypothesis JSON adhering to schema.
 
     ## Scope - STRICT
-    - Examine function bodies, variable propagation, sanitizers, and sink operations.
-    - Base every conclusion on concrete code evidence from files on disk.
-    - Focus strictly on the designated slice; do not analyze unrelated code.
-    - Do not execute exploits or modify source code.
-    - Reference exact file names, function names, and line numbers.
+    - Focus strictly on the designated taint flow slice; do not analyze unrelated repository files.
+    - Base all reasoning and outputs strictly on concrete code evidence and line numbers on disk.
+    - Do not modify target source code; interact strictly through inspection tools in the sandbox.
+    - Emit `finish` ONLY when candidate hypothesis has been formulated and defense articulated.
 
     ## Schema
 
     ```json
     {
       "id": "<string: flow id>",
+      "verdict": "<string: VULNERABLE | BENIGN>",
       "cwe": [
         "<string: cwe id>"
       ],
@@ -74,9 +74,9 @@ agent:
       "hint": "<string: trigger condition or input format>",
       "expected": "<string: expected behavior>",
       "oracle": {
-        "type": "<string: pattern | status | exception | assertion | timing>",
-        "channel": "<string: stdout | stderr | exit_code | http_body | http_status>",
-        "operator": "<string: contains | regex | equals | greater_than>",
+        "type": "<string: oracle type, such as pattern, status, exception, crash, or timing>",
+        "channel": "<string: observation channel, such as stdout, stderr, exit_code, http_body, http_status, or file>",
+        "operator": "<string: matching operator, such as contains, regex, or equals>",
         "expected": "<string: expected indicator>",
         "target": "<string: sink function or file>",
         "command": "<string: command template with placeholders>"
@@ -89,6 +89,7 @@ agent:
     ```json
     {
       "id": "CT01",
+      "verdict": "VULNERABLE",
       "cwe": [
         "CWE-78"
       ],
@@ -116,14 +117,14 @@ agent:
         "Input contains delimiter characters"
       ],
       "hint": "Command separator delimiter in parameter",
-      "expected": "Canary token reflected in execution output",
+      "expected": "Marker token reflected in execution output",
       "oracle": {
         "type": "pattern",
         "channel": "stdout",
         "operator": "contains",
-        "expected": "<canary_token>",
+        "expected": "<marker_token>",
         "target": "execute_cmd",
-        "command": "python server.py --param '<canary_input>'"
+        "command": "python server.py --param '<marker_input>'"
       },
       "remediation": "Validate input and avoid shell invocation"
     }
