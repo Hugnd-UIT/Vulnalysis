@@ -27,6 +27,9 @@ class PovGeneratorAgent(BaseAgent):
         pov_result = pov_result or f"/outputs/{flow_id}/results.json"
         feedback_str = json.dumps(feedback, indent=2, ensure_ascii=False) if feedback else ""
 
+        # Clean up any leftover processes before starting
+        self.cleanup_processes()
+
         # Feedback
         if self.messages and feedback:
             self.step = 0

@@ -152,7 +152,6 @@ class Anthropic:
         if "max_tokens" not in call_kwargs:
             call_kwargs["max_tokens"] = 4096
 
-        # Enable Anthropic prompt caching on system prompt
         if system_prompt:
             call_kwargs["system"] = [
                 {
@@ -162,7 +161,6 @@ class Anthropic:
                 }
             ]
 
-        # Enable Anthropic prompt caching on the last message
         if formatted_messages:
             last_msg = formatted_messages[-1]
             last_content = last_msg.get("content", "")

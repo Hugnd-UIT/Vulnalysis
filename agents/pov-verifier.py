@@ -27,6 +27,9 @@ class PovVerifierAgent(BaseAgent):
             pov_result = default_result_path
         pov_str = json.dumps(pov_result, indent=2, ensure_ascii=False) if isinstance(pov_result, (dict, list)) else str(pov_result or "")
 
+        # Clean up any leftover processes before starting
+        self.cleanup_processes()
+
         # Feedback
         if self.messages and pov_result:
             self.step = 0

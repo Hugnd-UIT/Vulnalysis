@@ -46,7 +46,7 @@ class QuotaTracker:
         input_rate = rates.get("input_rate", 0.0)
         output_rate = rates.get("output_rate", 0.0)
 
-        # Cached tokens get a 90% discount (Anthropic cache read is 10% rate)
+        # Calculate cost
         regular_input = max(0, input_tokens - cached_tokens)
         input_cost = (regular_input / 1_000_000) * input_rate
         cached_cost = (cached_tokens / 1_000_000) * (input_rate * 0.1)

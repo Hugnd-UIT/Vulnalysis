@@ -10,7 +10,8 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to craft reproduction script and execute test inside sandbox.
-    - Use `finish` ONLY when reproduction script has been written and executed.
+    - MANDATORY TEST RUN: You are strictly forbidden from outputting `finish` immediately after writing the script. You MUST execute the script inside sandbox (e.g., `python3 {{pov_script}}` or appropriate runner) via `bash`, observe its runtime behavior, and record the exact exit code and output into `{{pov_result}}`.
+    - Any `finish` action without a prior execution test run in `bash` and a saved `{{pov_result}}` will be considered an immediate failure.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
@@ -38,8 +39,8 @@ agent:
     ## Workflow
     1. Inspect the approved hypothesis preconditions, entry point parameters, oracle command template, and available harness.
     2. Craft a self-contained reproduction script at {{pov_script}} (in Python, Bash, or language appropriate to the target) that prepares the trigger input, manages target invocation, and executes the test.
-    3. Execute the reproduction script inside the sandbox environment, capturing exit code, stdout, and stderr.
-    4. Record execution results into {{pov_result}}.
+    3. MANDATORY: Execute the reproduction script inside the sandbox via `bash` (e.g. `python3 {{pov_script}} 2>&1`), checking for genuine syntax, runtime, and target reaction evidence.
+    4. MANDATORY: Record the execution exit code, raw output, and status into {{pov_result}}.
     5. If receiving retry feedback from Verifier or Coordinator, refine payload structure, headers, arguments, or environment settings and re-execute.
     6. Output `finish` containing the executed command, process results, and status (`EXECUTED`, `ERROR`, or `TIMEOUT`) adhering to schema.
 
@@ -47,7 +48,7 @@ agent:
     - Focus strictly on crafting self-contained reproduction scripts for the designated hypothesis.
     - Base all reasoning and outputs strictly on concrete parameter formats and preconditions from the hypothesis.
     - Do not modify target source code; interact strictly through external input surfaces within the sandbox.
-    - Emit `finish` ONLY when the reproduction script has been executed and outputs are fully recorded.
+    - Emit `finish` ONLY AFTER the reproduction script has been tested via execution and outputs are fully recorded into `{{pov_result}}`.
 
     ## Schema
 

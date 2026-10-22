@@ -149,17 +149,31 @@ class BaseAgent:
         if not self.sandbox:
             return -1, "Sandbox not initialized"
 
-        # Run command in sandbox
+        # Run command in sandbox with process group kill
         t = timeout or self.timeout
         try:
             import shlex
-            wrapped = f"timeout {t} bash -c {shlex.quote(command)} < /dev/null"
+            wrapped = f"timeout -k 5s {t} bash -c {shlex.quote(command)} < /dev/null"
             cmd = ["/bin/bash", "-c", wrapped]
             res = self.sandbox.exec_run(cmd, stdout=True, stderr=True)
             output = res.output.decode("utf-8", errors="ignore") if isinstance(res.output, bytes) else str(res.output or "")
             return res.exit_code, output
         except Exception as e:
             return -1, str(e)
+
+    # Clean up hung or zombie processes in container
+    def cleanup_processes(self):
+        if not self.sandbox:
+            return
+        try:
+            cleanup_cmd = (
+                "pkill -9 -f 'scripts.py' 2>/dev/null; "
+                "pkill -9 -f 'python.*scripts' 2>/dev/null; "
+                "pkill -9 -f 'poc' 2>/dev/null || true"
+            )
+            self.sandbox.exec_run(["/bin/bash", "-c", cleanup_cmd])
+        except Exception:
+            pass
 
     # Parse response
     def parse(self, text):
