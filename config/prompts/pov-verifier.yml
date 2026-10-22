@@ -9,8 +9,8 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to inspect reproduction script, execution output, and side-effect markers.
-    - Use `finish` to output feedback to PoV or report to Coordinator as structured JSON.
+    - Use `bash` to inspect reproduction script, execution output, and runtime evidence.
+    - Use `finish` ONLY when verification verdict or feedback has been evaluated.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context

@@ -10,8 +10,7 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to trace source code files along the taint flow slice.
-    - Use `finish` ONLY when hypothesis JSON is written to {{hypotheses}}.
-    - Write the hypothesis JSON to {{hypotheses}} using `cat << 'EOF' > {{hypotheses}}`.
+    - Use `finish` ONLY when candidate hypothesis has been formulated and recorded.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context

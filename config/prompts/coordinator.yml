@@ -10,7 +10,7 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to independently inspect source code and challenge candidate assumptions.
-    - Use `finish` to output your structured validation decision JSON.
+    - Use `finish` ONLY when validation decision has been evaluated and confirmed.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context

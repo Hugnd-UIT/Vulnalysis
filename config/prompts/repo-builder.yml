@@ -9,8 +9,8 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to inspect repository structure, resolve dependencies, and build the target.
-    - Use `finish` ONLY when the target project has been built and confirmed runnable.
+    - Use `bash` to resolve dependencies, configure environment, and build target.
+    - Use `finish` ONLY when target project is compiled and verified runnable.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context

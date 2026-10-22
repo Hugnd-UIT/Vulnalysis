@@ -9,8 +9,8 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to craft reproduction script at {{pov_script}} and execute it inside sandbox.
-    - Use `finish` ONLY after execution results are recorded into {{pov_result}}.
+    - Use `bash` to craft reproduction script and execute test inside sandbox.
+    - Use `finish` ONLY when reproduction script has been written and executed.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context

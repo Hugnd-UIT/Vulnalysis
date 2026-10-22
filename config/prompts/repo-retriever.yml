@@ -9,8 +9,9 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to inspect call flows and append discovered taint flows into {{taint_flows}}.
-    - Use `finish` ONLY when all call chains have been fully inspected and recorded.
+    - Use `bash` to explore call flows and trace untrusted paths to sinks.
+    - Use `finish` ONLY when all taint flows have been extracted and recorded.
+    - You MUST strictly adhere to the JSON schema when outputting finish.
 
     ## Context
     - Target repository: {{repo}}
