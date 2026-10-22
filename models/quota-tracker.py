@@ -35,35 +35,40 @@ class QuotaTracker:
         self.agents = {}
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.total_cached_tokens = 0
         self.total_requests = 0
         self.total_cost = 0.0
 
     # Estimate cost
-    def estimate(self, agent_name, input_tokens, output_tokens):
+    def estimate(self, agent_name, input_tokens, output_tokens, cached_tokens=0):
         # Read rates
         rates = self.agent_configs.get(agent_name, {})
         input_rate = rates.get("input_rate", 0.0)
         output_rate = rates.get("output_rate", 0.0)
 
-        # Calculate cost
-        input_cost = (input_tokens / 1_000_000) * input_rate
+        # Cached tokens get a 90% discount (Anthropic cache read is 10% rate)
+        regular_input = max(0, input_tokens - cached_tokens)
+        input_cost = (regular_input / 1_000_000) * input_rate
+        cached_cost = (cached_tokens / 1_000_000) * (input_rate * 0.1)
         output_cost = (output_tokens / 1_000_000) * output_rate
-        return input_cost + output_cost
+        return input_cost + cached_cost + output_cost
 
     # Track usage
-    def track(self, agent_name, input_tokens, output_tokens, model=None):
+    def track(self, agent_name, input_tokens, output_tokens, cached_tokens=0, model=None):
         # Resolve model
         cfg_entry = self.agent_configs.get(agent_name, {})
         target_model = model or cfg_entry.get("model", "")
         input_tokens = int(input_tokens or 0)
         output_tokens = int(output_tokens or 0)
+        cached_tokens = int(cached_tokens or 0)
 
         # Calculate cost
-        cost = self.estimate(agent_name, input_tokens, output_tokens)
+        cost = self.estimate(agent_name, input_tokens, output_tokens, cached_tokens=cached_tokens)
 
         # Update totals
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
+        self.total_cached_tokens += cached_tokens
         self.total_requests += 1
         self.total_cost += cost
 
@@ -73,6 +78,7 @@ class QuotaTracker:
                 "model": target_model,
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "cached_tokens": 0,
                 "requests": 0,
                 "cost": 0.0,
             }
@@ -82,6 +88,7 @@ class QuotaTracker:
         entry["model"] = target_model
         entry["input_tokens"] += input_tokens
         entry["output_tokens"] += output_tokens
+        entry["cached_tokens"] = entry.get("cached_tokens", 0) + cached_tokens
         entry["requests"] += 1
         entry["cost"] += cost
 
@@ -101,6 +108,7 @@ class QuotaTracker:
                 "model": self.agent_configs.get(agent_name, {}).get("model", ""),
                 "input_tokens": 0,
                 "output_tokens": 0,
+                "cached_tokens": 0,
                 "requests": 0,
                 "cost": 0.0,
             },
@@ -111,6 +119,7 @@ class QuotaTracker:
         return {
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "total_cached_tokens": self.total_cached_tokens,
             "total_requests": self.total_requests,
             "total_cost": round(self.total_cost, 4),
             "agents": self.agents,
@@ -121,6 +130,7 @@ class QuotaTracker:
         self.agents.clear()
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.total_cached_tokens = 0
         self.total_requests = 0
         self.total_cost = 0.0
 

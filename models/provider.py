@@ -71,9 +71,17 @@ class OpenAI:
         if usage and self.agent_name:
             prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
             completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+            pt_details = getattr(usage, "prompt_tokens_details", None)
+            cached_tokens = getattr(pt_details, "cached_tokens", 0) or 0 if pt_details else 0
             try:
                 from models import tracker
-                tracker.tracker.track(self.agent_name, prompt_tokens, completion_tokens, model=self.model)
+                tracker.tracker.track(
+                    self.agent_name,
+                    prompt_tokens,
+                    completion_tokens,
+                    cached_tokens=cached_tokens,
+                    model=self.model,
+                )
             except Exception:
                 pass
 
@@ -144,8 +152,33 @@ class Anthropic:
         if "max_tokens" not in call_kwargs:
             call_kwargs["max_tokens"] = 4096
 
+        # Enable Anthropic prompt caching on system prompt
         if system_prompt:
-            call_kwargs["system"] = system_prompt
+            call_kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+
+        # Enable Anthropic prompt caching on the last message
+        if formatted_messages:
+            last_msg = formatted_messages[-1]
+            last_content = last_msg.get("content", "")
+            if isinstance(last_content, str):
+                formatted_messages[-1] = {
+                    "role": last_msg["role"],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": last_content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                }
+            elif isinstance(last_content, list) and len(last_content) > 0 and isinstance(last_content[-1], dict):
+                last_content[-1]["cache_control"] = {"type": "ephemeral"}
 
         # Send request
         response = self.client.messages.create(
@@ -159,9 +192,16 @@ class Anthropic:
         if usage and self.agent_name:
             prompt_tokens = getattr(usage, "input_tokens", 0) or 0
             completion_tokens = getattr(usage, "output_tokens", 0) or 0
+            cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
             try:
                 from models import tracker
-                tracker.tracker.track(self.agent_name, prompt_tokens, completion_tokens, model=self.model)
+                tracker.tracker.track(
+                    self.agent_name,
+                    prompt_tokens,
+                    completion_tokens,
+                    cached_tokens=cached_tokens,
+                    model=self.model,
+                )
             except Exception:
                 pass
 
