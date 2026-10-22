@@ -50,8 +50,9 @@ agent:
       "cwe": [
         "<string: cwe id>"
       ],
-      "title": "<string: title>",
-      "description": "<string: description>",
+      "title": "<string: vulnerability title>",
+      "description": "<string: root cause description>",
+      "defense": "<string: counter-argument answering coordinator issues, or null>",
       "source": {
         "ep": "<string: entry point>",
         "file": "<string: file path>",
@@ -61,7 +62,7 @@ agent:
         "file": "<string: file path>",
         "function": "<string: function name>",
         "line": "<integer: line number>",
-        "operation": "<string: operation>"
+        "operation": "<string: sink operation>"
       },
       "flow": {
         "chain": [
@@ -74,9 +75,9 @@ agent:
       "hint": "<string: trigger condition or input format>",
       "expected": "<string: expected behavior>",
       "oracle": {
-        "type": "<string: sanitizer, canary, pattern, status, or timing>",
-        "channel": "<string: stdout, stderr, exit_code, http_body, or http_status>",
-        "operator": "<string: contains, regex, equals, or greater_than>",
+        "type": "<string: pattern | status | exception | assertion | timing>",
+        "channel": "<string: stdout | stderr | exit_code | http_body | http_status>",
+        "operator": "<string: contains | regex | equals | greater_than>",
         "expected": "<string: expected indicator>",
         "target": "<string: sink function or file>",
         "command": "<string: command template with placeholders>"
@@ -88,12 +89,13 @@ agent:
     ## Example
     ```json
     {
-      "id": "P001",
+      "id": "CT01",
       "cwe": [
         "CWE-78"
       ],
       "title": "Command execution parameter weakness",
       "description": "Untrusted input propagates to command execution sink without bounds check",
+      "defense": null,
       "source": {
         "ep": "HTTP query parameter",
         "file": "server.py",
@@ -117,7 +119,7 @@ agent:
       "hint": "Command separator delimiter in parameter",
       "expected": "Canary token reflected in execution output",
       "oracle": {
-        "type": "canary",
+        "type": "pattern",
         "channel": "stdout",
         "operator": "contains",
         "expected": "<canary_token>",

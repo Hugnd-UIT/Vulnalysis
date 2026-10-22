@@ -50,13 +50,11 @@ agent:
 
     ```json
     {
-      "status": "<string: RETRYING or CONFIRMED>",
-      "total": "<integer: total attempts>",
       "pov": "<string: script execution command>",
       "res": {
         "exit_code": "<integer: exit code>",
         "output": "<string: output>",
-        "status": "<string: EXECUTED or CRASHED>"
+        "status": "<string: EXECUTED | ERROR | TIMEOUT>"
       }
     }
     ```
@@ -65,12 +63,10 @@ agent:
 
     ```json
     {
-      "status": "CONFIRMED",
-      "total": 1,
       "pov": "python3 /outputs/flow-1/scripts.py",
       "res": {
         "exit_code": 0,
-        "output": "<canary_token_observed>",
+        "output": "<observed_execution_output>",
         "status": "EXECUTED"
       }
     }

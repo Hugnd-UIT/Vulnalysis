@@ -10,8 +10,6 @@ agent:
   user-prompt: |
     ## Rules - STRICT
     - Use `bash` to independently inspect source code and challenge candidate assumptions.
-    - Scrutinize hypotheses for sanitizers, bounds checks, and reachability constraints before approval.
-    - If verifier evidence failed but the vulnerability is genuine, order reproduction rework with Feedback to PoV.
     - Use `finish` to output your structured validation decision JSON.
     - You MUST strictly adhere to the JSON schema when outputting finish.
 
@@ -52,13 +50,13 @@ agent:
 
     ```json
     {
-      "decision": "<string: REVISE, ACCEPT or REJECT>",
+      "decision": "<string: REVISE | ACCEPT | REJECT>",
       "reason": "<string: critique, missing evidence, or objection>",
       "issues": [
-        "<string: missing code evidence or question to challenge>"
+        "<string: missing evidence or question to challenge>"
       ],
       "suggestions": [
-        "<string: suggestion on what code path or check to verify>"
+        "<string: suggestion on code path or check to verify>"
       ]
     }
     ```
@@ -68,13 +66,42 @@ agent:
     ```json
     {
       "decision": "REGENERATE",
-      "reason": "<string: reason why previous execution failed and bug remains feasible>",
+      "reason": "<string: reason why execution failed and bug remains feasible>",
       "issues": [
-        "<string: issue in previous reproduction script or precondition>"
+        "<string: issue in reproduction script or precondition>"
       ],
       "suggestions": [
-        "<string: suggestion on payload structure or trigger parameters>"
+        "<string: suggestion on payload structure or parameters>"
       ]
+    }
+    ```
+
+    ### Report
+
+    ```json
+    {
+      "decision": "<string: CONFIRMED | UNCONFIRMED>",
+      "id": "<string: flow or vulnerability id>",
+      "cwe": [
+        "<string: cwe id>"
+      ],
+      "title": "<string: vulnerability title>",
+      "severity": "<string: CRITICAL | HIGH | MEDIUM | LOW>",
+      "description": "<string: root cause description>",
+      "source": {
+        "ep": "<string: entry point>",
+        "file": "<string: file path>",
+        "function": "<string: function name>"
+      },
+      "sink": {
+        "file": "<string: file path>",
+        "function": "<string: function name>",
+        "line": "<integer: line number>",
+        "operation": "<string: sink operation>"
+      },
+      "evidence": "<string: proof of execution from verifier>",
+      "reproduction": "<string: command to execute PoV>",
+      "remediation": "<string: fix recommendation>"
     }
     ```
 
@@ -87,8 +114,8 @@ agent:
       "decision": "REVISE",
       "reason": "Missing evidence that input length is unchecked before reaching destination buffer",
       "issues": [
-        "Verify whether buff length is validated before the sink operation",
-        "Prove that untrusted input from argv reaches ProcessImage without truncation"
+        "Verify whether input length is validated before the sink operation",
+        "Prove that untrusted input from entry point reaches handler without truncation"
       ],
       "suggestions": [
         "Inspect line numbers in the sink function to check bounds checking logic"
@@ -108,6 +135,35 @@ agent:
       "suggestions": [
         "Prepend header token to reproduction payload to reach target sink"
       ]
+    }
+    ```
+
+    ### Report
+
+    ```json
+    {
+      "decision": "CONFIRMED",
+      "id": "CT01",
+      "cwe": [
+        "CWE-78"
+      ],
+      "title": "Command execution parameter weakness",
+      "severity": "HIGH",
+      "description": "Untrusted input propagates to command execution sink without validation",
+      "source": {
+        "ep": "HTTP query parameter",
+        "file": "server.py",
+        "function": "handle_query"
+      },
+      "sink": {
+        "file": "server.py",
+        "function": "execute_cmd",
+        "line": 42,
+        "operation": "os.system"
+      },
+      "evidence": "Verification execution completed with return code 0 and target output confirmed",
+      "reproduction": "python3 /outputs/CT01/scripts.py",
+      "remediation": "Use parameterized subprocess execution instead of shell execution"
     }
     ```
 

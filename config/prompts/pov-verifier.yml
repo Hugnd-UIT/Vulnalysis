@@ -61,11 +61,14 @@ agent:
 
     ```json
     {
-      "reason": "<string: reason>",
+      "decision": "<string: CONFIRMED | FAILED>",
+      "reason": "<string: verification reason>",
       "alignment": {
-        "location_match": "<boolean>",
-        "mechanism_match": "<boolean>"
-      }
+        "location_match": "<boolean: reaches and affects designated sink>",
+        "mechanism_match": "<boolean: matches hypothesized CWE mechanism>"
+      },
+      "evidence": "<string: proof of vulnerability trigger>",
+      "reproducible": "<boolean: reproduction consistency>"
     }
     ```
 
@@ -88,11 +91,14 @@ agent:
 
     ```json
     {
+      "decision": "CONFIRMED",
       "reason": "Sink execution confirmed with expected oracle observation",
       "alignment": {
         "location_match": true,
         "mechanism_match": true
-      }
+      },
+      "evidence": "Verification execution completed with return code 0 and target output confirmed",
+      "reproducible": true
     }
     ```
 
