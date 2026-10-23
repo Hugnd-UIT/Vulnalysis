@@ -107,18 +107,14 @@ class RepoRetrieverAgent(BaseAgent):
             if code == 0:
                 content = out
 
-        # Group call flows
+        # Filter and group call flows
+        from src.dedup import filter as filter_flows
+        filtered_flows = filter_flows(content.splitlines())
         grouped_flows = {}
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-                target = obj.get("dst", {}).get("file") or "unknown"
-                grouped_flows.setdefault(target, []).append(line)
-            except Exception:
-                pass
+        for obj in filtered_flows:
+            target = obj.get("dst", {}).get("file") or "unknown"
+            grouped_flows.setdefault(target, []).append(json.dumps(obj, ensure_ascii=False))
+
 
         if self.sandbox:
             self.execute(f": > {taint_flows}")
@@ -148,7 +144,6 @@ class RepoRetrieverAgent(BaseAgent):
         import logging
         log = logging.getLogger("vulnalysis")
         total_count = sum(len(v) for v in grouped_flows.values())
-        log.info(f"[{self.name}] Sliced {total_count} call flows into {len(targets)} targets")
 
         high = []
         benign = []
@@ -158,13 +153,12 @@ class RepoRetrieverAgent(BaseAgent):
             lines = grouped_flows[target]
             log.info(f"[{self.name}] === Target {idx}/{len(targets)}: {len(lines)} flows for {target} ===")
 
-            flows_content = "\n".join(lines)
-            if self.sandbox:
-                self.execute(f"cat << 'EOF' > {chunk_path}\n{flows_content}\nEOF")
-            else:
-                p = Path(chunk_path)
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(flows_content, encoding="utf-8")
+            flows_content = "\n".join(lines) + "\n"
+
+            # Write chunk
+            host_chunk = Path("outputs") / Path(chunk_path).name if str(chunk_path).startswith("/") else Path(chunk_path)
+            host_chunk.parent.mkdir(parents=True, exist_ok=True)
+            host_chunk.write_text(flows_content, encoding="utf-8")
 
             # Reset memory
             self.memory.clear()
@@ -198,8 +192,10 @@ class RepoRetrieverAgent(BaseAgent):
                             if not x.get("confidence"):
                                 x["confidence"] = 0.9
                             x["verdict"] = "VULNERABLE"
+                            if "function" in x["sink"] and "func" not in x["sink"]:
+                                x["sink"]["func"] = x["sink"].pop("function")
                             target_high.append(x)
-                            sk = (str(x["sink"].get("file")), str(x["sink"].get("line")), str(x["sink"].get("function") or x["sink"].get("func")))
+                            sk = (str(x["sink"].get("file")), str(x["sink"].get("line")), str(x["sink"].get("func")))
                             seen.add(sk)
                 self.log_action("finish")
                 self.log(thought=thought, action="finish", observation=f"Target {idx}/{len(targets)} completed")
@@ -225,25 +221,28 @@ class RepoRetrieverAgent(BaseAgent):
                         continue
 
                     src_func = src.get("func") or src.get("function") or src.get("id") or (chain[0].split(":")[-1] if chain else "")
-                    benign.append({
+                    cand = {
                         "id": f"B{len(benign) + 1:04d}",
                         "title": f"Candidate flow to {dst_file}:{dst_line or ''}",
                         "source": {
-                            "file": src.get("file"),
-                            "function": src_func,
+                            "file": src.get("file") or dst_file,
+                            "function": (chain[0].split(":")[-1] if chain else dst_func),
                             "line": src.get("line"),
                             "variable": src.get("variable", "")
                         },
                         "sink": {
                             "file": dst_file,
-                            "function": dst_func,
+                            "func": src_func,
                             "line": dst_line,
                             "variable": dst.get("variable", "")
                         },
                         "chain": chain,
                         "confidence": 0.1,
                         "verdict": "BENIGN"
-                    })
+                    }
+                    from src.dedup import score
+                    if score(cand) >= 8:
+                        benign.append(cand)
                 except Exception:
                     pass
 
@@ -265,27 +264,28 @@ class RepoRetrieverAgent(BaseAgent):
                     try:
                         obj = json.loads(l)
                         if isinstance(obj, dict) and obj.get("sink") and obj.get("source"):
-                            sk = (str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("function") or obj["sink"].get("func")))
+                            if "function" in obj["sink"] and "func" not in obj["sink"]:
+                                obj["sink"]["func"] = obj["sink"].pop("function")
+                            sk = (str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("func")))
                             if sk not in seen:
                                 seen.add(sk)
                                 high.append(obj)
                     except Exception:
                         pass
 
-        # Save flows
-        ordered = high + benign
+        # Combine flows
+        from src.dedup import combine
+        ordered = combine(high + benign)
         payload = "\n".join(json.dumps(f, ensure_ascii=False) for f in ordered)
         if payload:
             payload += "\n"
 
-        if self.sandbox:
-            self.execute(f"cat << 'EOF' > {taint_flows}\n{payload}EOF")
-        else:
-            p = Path(taint_flows)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(payload, encoding="utf-8")
+        # Save flows
+        host_taint = Path("outputs") / Path(taint_flows).name if str(taint_flows).startswith("/") else Path(taint_flows)
+        host_taint.parent.mkdir(parents=True, exist_ok=True)
+        host_taint.write_text(payload, encoding="utf-8")
 
-        log.info(f"[{self.name}] Flows saved: {len(high)} sinks, {len(benign)} benign")
+        log.info(f"[{self.name}] Flows saved: {len(ordered)} combined clusters ({len(high)} sinks, {len(benign)} benign)")
         return taint_flows
 
 

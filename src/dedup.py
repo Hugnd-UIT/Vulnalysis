@@ -1,45 +1,84 @@
+def _match_op(op, ops):
+    if not op:
+        return False
+    op_lower = op.lower()
+    for k in ops:
+        if k == op_lower or op_lower.endswith(f".{k}") or op_lower.endswith(f"::{k}") or f"_{k}" in op_lower or f"{k}_" in op_lower:
+            return True
+    return False
+
+
 def score(flow):
     if "primary_vector" in flow:
         return flow["primary_vector"].get("score", 0)
     sink = flow.get("sink", {}) or {}
-    op = str(sink.get("func") or sink.get("operation") or sink.get("function") or "").lower()
+    op = str(sink.get("func") or "").lower()
+    sink_file = str(sink.get("file") or "").lower()
     src = flow.get("source", {}) or {}
-    ep = str(src.get("ep") or src.get("function") or "").lower()
+    ep = str(src.get("func") or "").lower()
     var = str(src.get("variable") or "").lower()
     chain = flow.get("chain") or flow.get("flow", {}).get("chain", []) or []
 
     pts = 2
+
+    conf = flow.get("confidence") or 0
+    fid = str(flow.get("id") or "").lower()
+    if conf >= 0.7 or fid.startswith(("tf", "ct")) or flow.get("verdict") == "VULNERABLE":
+        pts += 10
+
     rce_ops = (
         "system", "exec", "popen", "eval", "spawn", "passthru",
         "subprocess", "shell_exec", "check_output", "render_template",
-        "compile", "command", "process"
-    )
-    memory_ops = (
-        "strcpy", "strcat", "sprintf", "gets", "memcpy", "free",
-        "malloc", "realloc", "unsafe", "transmute", "from_raw_parts"
-    )
-    serial_ops = (
-        "pickle", "yaml", "shelve", "marshal", "unserialize",
-        "readobject", "binaryformatter", "xmldecoder"
-    )
-    leak_ops = (
-        "open", "read", "send_file", "readfile", "writefile",
-        "remove", "unlink", "shutil", "file"
-    )
-    web_ops = (
-        "query", "select", "sql", "cursor", "execute",
-        "requests", "urlopen", "fetch", "render", "template"
+        "compile", "command", "process", "processbuilder", "runtime",
+        "child_process", "execsync", "spawnsync", "fork", "runincontext",
+        "proc_open", "pcntl_exec", "assert", "create_function", "open3",
+        "execl", "execv", "execle", "execve", "execvp"
     )
 
-    if any(k in op for k in rce_ops):
+    memory_ops = (
+        "strcpy", "strncpy", "strcat", "strncat", "sprintf", "vsprintf",
+        "snprintf", "vsnprintf", "gets", "memcpy", "memmove", "free",
+        "malloc", "calloc", "realloc", "alloca", "valloc", "reallocarray",
+        "memset", "bcopy", "unsafe", "transmute", "from_raw_parts",
+        "scanf", "sscanf", "fscanf", "asprintf", "dprintf",
+        "talloc_free", "talloc_const_free", "fr_radius_packet_free",
+        "freeaddrinfo", "lt_const_free", "lt_malloc"
+    )
+
+    is_c_cpp = any(sink_file.endswith(ext) for ext in (".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"))
+    fmt_ops = ("printf", "fprintf", "vprintf", "vfprintf", "syslog", "asprintf", "dprintf", "snprintf", "sprintf")
+
+    if _match_op(op, rce_ops):
         pts += 10
-    elif any(k in op for k in memory_ops):
+    elif is_c_cpp and _match_op(op, fmt_ops):
         pts += 8
-    elif any(k in op for k in serial_ops):
+    elif _match_op(op, memory_ops):
+        pts += 8
+
+    serial_ops = (
+        "pickle", "yaml", "shelve", "marshal", "unserialize",
+        "readobject", "readunshared", "binaryformatter", "xmldecoder",
+        "kryo", "hessian", "fastjson", "objectinputstream", "node-serialize"
+    )
+    if _match_op(op, serial_ops):
         pts += 7
-    elif any(k in op for k in leak_ops):
+
+    leak_ops = (
+        "open", "fopen", "read", "send_file", "readfile", "writefile",
+        "remove", "unlink", "shutil", "file", "fileinputstream",
+        "fileoutputstream", "filereader", "filewriter", "paths.get",
+        "file_get_contents", "file_put_contents", "include", "require"
+    )
+    if _match_op(op, leak_ops):
         pts += 6
-    elif any(k in op for k in web_ops):
+
+    web_ops = (
+        "query", "select", "sql", "cursor", "execute",
+        "requests", "urlopen", "fetch", "render", "template",
+        "sqlite3", "mysql", "pqexec", "preparestatement", "executequery",
+        "initialcontext", "lookup", "axios", "curl_exec", "findone"
+    )
+    if _match_op(op, web_ops):
         pts += 5
 
     src_keys = (
@@ -65,7 +104,7 @@ def dedup(flows):
     clusters = {}
     for f in flows:
         sink = f.get("sink", {}) or {}
-        key = f"{sink.get('file')}:{sink.get('function')}:{sink.get('line')}:{sink.get('operation')}"
+        key = f"{sink.get('file')}:{sink.get('func')}:{sink.get('line')}"
         cur_pts = score(f)
         if key not in clusters or cur_pts > clusters[key][0]:
             clusters[key] = (cur_pts, f)
@@ -93,6 +132,9 @@ def combine(flows):
             sink = f.get("sink", {}) or {}
             pv = dict(f["primary_vector"])
             pv["sink"] = sink
+            for meta_k in ("verdict", "confidence", "title", "cwe"):
+                if meta_k in f and meta_k not in pv:
+                    pv[meta_k] = f[meta_k]
             flat_flows.append(pv)
             for av in f.get("alternative_vectors", []):
                 if isinstance(av, dict):
@@ -106,8 +148,8 @@ def combine(flows):
     for f in flat_flows:
         sink = f.get("sink", {}) or {}
         file_val = str(sink.get("file") or "").strip()
-        line_val = _parse_line(sink.get("line") or sink.get("lines"))
-        func_val = str(sink.get("func") or sink.get("function") or sink.get("operation") or "").strip()
+        line_val = _parse_line(sink.get("line"))
+        func_val = str(sink.get("func") or "").strip()
         var_val = str(sink.get("variable") or "").strip()
 
         key = (file_val, line_val, func_val)
@@ -116,7 +158,7 @@ def combine(flows):
             "id": f.get("id", ""),
             "score": cur_score,
             "source": f.get("source", {}) or {},
-            "chain": f.get("chain") or f.get("flow", {}).get("chain", []) or []
+            "chain": f.get("chain", []) or []
         }
         if f.get("transforms"):
             vector["transforms"] = f.get("transforms")
@@ -154,6 +196,8 @@ def combine(flows):
             "sink": item["sink"],
             "source": pv.get("source", {}) or {},
             "chain": pv.get("chain", []) or [],
+            "verdict": pv.get("verdict", "BENIGN"),
+            "confidence": pv.get("confidence", 0.1),
             "primary_vector": pv,
             "alternative_vectors": alts
         })
@@ -161,4 +205,88 @@ def combine(flows):
     return combined
 
 
-__all__ = ["score", "dedup", "rank", "combine"]
+SAFE_FUNCS = {
+    "isinstance", "issubclass", "len", "type", "repr", "id", "callable",
+    "hasattr", "getattr", "setattr", "sys.version", "format", "strip",
+    "split", "join", "replace", "lower", "upper", "startswith", "endswith",
+    "int", "float", "bool", "list", "dict", "set", "tuple", "range",
+    "enumerate", "zip", "min", "max", "abs", "sum", "round",
+    "Exception", "ValueError", "TypeError", "KeyError", "IndexError",
+    "RuntimeError", "StopIteration", "super", "super.__setitem__",
+    "logging.basicConfig", "logging.getLogger", "logger.debug", "logger.info",
+    "print", "sys.exit", "encode", "decode", "items", "keys", "values",
+    "append", "extend", "pop", "insert", "clear", "update", "rstrip", "lstrip",
+    "sleep", "strftime", "datetime", "now", "utcnow", "basename", "dirname",
+    "RawConfigParser", "ConfigParser", "ArgumentParser", "add_argument", "parse_args",
+    "sizeof", "strlen", "isdigit", "isalpha", "isalnum", "isspace",
+    "isupper", "islower", "toupper", "tolower", "abs", "labs",
+    "strcmp", "strncmp", "memcmp", "atoi", "atol", "atof", "strchr",
+    "strrchr", "strstr",
+    "getClass", "equals", "hashCode", "toString", "valueOf", "length",
+    "size", "isEmpty", "contains", "compareTo", "Math.abs", "Math.min",
+    "typeof", "Array.isArray", "Object.keys", "Object.values",
+    "Object.entries", "console.log", "console.debug", "console.info",
+    "Boolean", "Number", "String", "parseInt", "parseFloat", "trim",
+    "cap", "make", "new", "strings.EqualFold", "strings.Contains",
+    "strings.HasPrefix", "strings.HasSuffix", "strings.TrimSpace",
+    "is_array", "is_string", "is_int", "is_numeric", "is_bool", "is_null",
+    "empty", "isset", "strtolower", "strtoupper", "strpos",
+    "size_of", "align_of", "clone", "to_string", "is_empty", "unwrap",
+    "GetType", "Math.Abs", "Math.Min", "Math.Max",
+    "is_a?", "kind_of?", "nil?", "empty?", "to_s", "to_i"
+}
+
+DANGEROUS_STEMS = (
+    "printf", "sprintf", "snprintf", "vsnprintf", "asprintf", "syslog",
+    "free", "alloc", "malloc", "realloc", "calloc", "memcpy", "memmove",
+    "strcpy", "strcat", "gets", "system", "exec", "popen", "spawn",
+    "eval", "sql", "query", "cursor", "open", "read", "write", "unlink",
+    "remove", "pickle", "yaml", "unserialize", "readobject"
+)
+
+
+def filter(flows):
+    import json
+    cleaned = []
+    seen = {}
+    for f in flows:
+        if isinstance(f, str):
+            try:
+                f = json.loads(f)
+            except Exception:
+                continue
+        if not isinstance(f, dict):
+            continue
+
+        src = f.get("src", {}) or {}
+        dst = f.get("dst", {}) or {}
+        func = str(src.get("func") or src.get("id") or "").strip()
+        fn_lower = func.lower()
+        dst_file = str(dst.get("file") or "").lower()
+
+        is_dangerous = any(s in fn_lower for s in DANGEROUS_STEMS)
+        is_internal = any(dst_file.endswith(ext) for ext in (".c", ".cpp", ".cc", ".h")) and (
+            func.startswith(("fr_", "rad_", "rlm_", "eap_", "tls_", "pair_"))
+            or any(func.endswith(p) for p in ("_exec", "_eval", "_send", "_recv", "_parse", "_alloc", "_free"))
+        )
+
+        if not is_dangerous and not is_internal:
+            last_part = func.split(".")[-1]
+            if func in SAFE_FUNCS or fn_lower in SAFE_FUNCS or last_part in SAFE_FUNCS or last_part.lower() in SAFE_FUNCS:
+                continue
+
+        key = (dst.get("file"), dst.get("line"), func)
+        if key in seen:
+            existing = seen[key]
+            cur_paths = existing.setdefault("paths", [])
+            for p in f.get("paths", []):
+                if p not in cur_paths:
+                    cur_paths.append(p)
+        else:
+            seen[key] = f
+            cleaned.append(f)
+
+    return cleaned
+
+
+__all__ = ["score", "dedup", "rank", "combine", "filter"]

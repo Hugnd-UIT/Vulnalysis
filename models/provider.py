@@ -81,11 +81,12 @@ class OpenAI:
             self.model = ""
 
         # Initialize client
-        self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url, timeout=60.0)
+        self.client = _OpenAIClient(api_key=self.key or "none", base_url=self.url, timeout=180.0)
+
 
     def chat(self, messages, **kwargs):
         call_kwargs = dict(kwargs)
-        if self.url and ("google" in self.url or "localhost" in self.url):
+        if self.url and any(h in self.url for h in ("google", "localhost", "127.0.0.1", "0.0.0.0")):
             try:
                 from utils import apply
                 call_kwargs = apply(call_kwargs)

@@ -18,11 +18,12 @@ log = setup_logger()
 
 
 class Orchestrator:
-    def __init__(self, repo_path, outputs_path="outputs", config_path=None, provider_cls=None):
+    def __init__(self, repo_path, outputs_path="outputs", config_path=None, provider_cls=None, skip_prep=False):
         self.repo = Path(repo_path).resolve()
         self.outputs_path = Path(outputs_path).resolve()
         self.config_path = config_path
         self.state = State(self.outputs_path)
+        self.skip_prep = skip_prep
 
         # Provider config
         if provider_cls is None:
@@ -39,7 +40,7 @@ class Orchestrator:
     # Init sandbox
     def init_sandbox(self):
         self.container = sandbox_init(repo_path=str(self.repo), outputs_path=str(self.outputs_path))
-        log.info(f"{self.container.name} [{self.container.status}]\n")
+        log.info(f"{self.container.name} [{self.container.status}]")
         return self.container
 
     # Phase 1
@@ -51,8 +52,13 @@ class Orchestrator:
             graph_out = self.outputs_path / "call-graph.json"
             flows_out = self.outputs_path / "call-flows.jsonl"
             graphify.callgraph(str(self.repo), str(graph_out), flow=str(flows_out))
+            if flows_out.exists():
+                from src.dedup import filter as filter_flows
+                raw_lines = flows_out.read_text(encoding="utf-8").splitlines()
+                cleaned = filter_flows(raw_lines)
+                flows_out.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in cleaned) + "\n", encoding="utf-8")
         except Exception as e:
-            log.warning(f"Graphify skipped: {e}")
+            log.warning(f"Graphify: {e}")
 
         retriever_result = [None]
         builder_result = [None]
@@ -458,14 +464,19 @@ class Orchestrator:
 
     def run(self):
         start = time.time()
-        log.info("=" * 60)
-        log.info("VULNALYSIS")
-        log.info("=" * 60)
 
         # Init sandbox
         self.init_sandbox()
 
-        taint_path, build_ok = self.phase_prep()
+        if self.skip_prep and (self.outputs_path / "taint-flows.jsonl").exists():
+            build_ok = True
+            taint_path = str(self.outputs_path / "taint-flows.jsonl")
+            if not self.state.harness:
+                import importlib
+                fuzz_mod = importlib.import_module("src.fuzz-harness")
+                self.state.harness = fuzz_mod.check(self.repo, self.outputs_path)
+        else:
+            taint_path, build_ok = self.phase_prep()
 
         if not build_ok:
             log.error("Pipeline stopped due to target repository build failure.")
@@ -514,6 +525,7 @@ def main():
     parser.add_argument("--outputs", default="outputs", help="Path to outputs directory")
     parser.add_argument("--config", default=None, help="Path to config.yml")
     parser.add_argument("--provider", default="openai", choices=["openai", "anthropic"], help="LLM provider")
+    parser.add_argument("--skip-preprogress", "--skip-prep", dest="skip_preprogress", action="store_true", help="Skip preprocessing (repo-builder and repo-retriever) if already done")
     args = parser.parse_args()
 
     # Select provider
@@ -529,6 +541,7 @@ def main():
         outputs_path=args.outputs,
         config_path=args.config,
         provider_cls=provider_cls,
+        skip_prep=args.skip_preprogress,
     )
     report = orch.run()
 
