@@ -99,7 +99,7 @@ class BaseAgent:
     def loop(self, finish=None, default=False):
         while not self.is_step_exceeded() and not self.is_cost_exceeded():
             reply = self.call(self.messages)
-            if not reply or reply.startswith("[!]"):
+            if not reply:
                 break
             thought, action, command = self.parse(reply)
 
@@ -149,7 +149,7 @@ class BaseAgent:
         if not self.sandbox:
             return -1, "Sandbox not initialized"
 
-        # Run command in sandbox with process group kill
+        # Run command in sandbox
         t = timeout or self.timeout
         try:
             import shlex
@@ -161,7 +161,7 @@ class BaseAgent:
         except Exception as e:
             return -1, str(e)
 
-    # Clean up hung or zombie processes in container
+    # Clean up processes in sandbox
     def cleanup_processes(self):
         if not self.sandbox:
             return
@@ -224,28 +224,50 @@ class BaseAgent:
 
         return thought, action, command
 
-    # Extract json
+    # Extract json / structured data (YAML-tolerant parser like Revelio)
     def extract_json(self, text):
         if not text:
             return None
-        match = re.search(r"```(?:json|finish)?\s*([\{\[][\s\S]*?[\}\]])\s*```", text, re.DOTALL | re.IGNORECASE)
-        if match:
+
+        def _try_parse(raw):
+            raw = raw.strip()
+            if not raw:
+                return None
             try:
-                return json.loads(match.group(1))
+                parsed = yaml.safe_load(raw)
+                if isinstance(parsed, (dict, list)):
+                    return parsed
             except Exception:
                 pass
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, (dict, list)):
+                    return parsed
+            except Exception:
+                pass
+            return None
+
+        # 1. Search markdown fences: ```json ... ``` or ```finish ... ``` or ```yaml ... ```
+        match = re.search(r"```(?:json|finish|yaml)?\s*([\{\[][\s\S]*?[\}\]])\s*```", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            res = _try_parse(match.group(1))
+            if res is not None:
+                return res
+
+        # 2. Search un-fenced outer JSON object
         match = re.search(r"(\{[\s\S]*\})", text)
         if match:
-            try:
-                return json.loads(match.group(1))
-            except Exception:
-                pass
+            res = _try_parse(match.group(1))
+            if res is not None:
+                return res
+
+        # 3. Search un-fenced outer JSON array
         arr_match = re.search(r"(\[[\s\S]*\])", text)
         if arr_match:
-            try:
-                return json.loads(arr_match.group(1))
-            except Exception:
-                pass
+            res = _try_parse(arr_match.group(1))
+            if res is not None:
+                return res
+
         return None
 
     # Logging helpers

@@ -8,32 +8,38 @@ from anthropic import Anthropic as _AnthropicClient
 log = logging.getLogger("provider")
 
 
-def call_with_retry(call_fn, agent_name="", max_retries=8, base_delay=4.0):
+def retry(call_fn, agent_name="", max_retries=8, base_delay=4.0):
     for attempt in range(max_retries):
         try:
             return call_fn()
         except Exception as e:
             err_name = type(e).__name__
             err_msg = str(e)
+            status_code = getattr(e, "status_code", None) or getattr(e, "code", None)
 
-            # Non-retryable client errors (bad auth, invalid parameters, not found)
-            non_retryable = (
+            # Explicit non-retryable HTTP client errors (400, 401, 403, 404, 422)
+            non_retryable_codes = {400, 401, 403, 404, 422}
+            if status_code in non_retryable_codes:
+                raise e
+
+            non_retryable_names = (
                 "AuthenticationError",
                 "BadRequestError",
                 "NotFoundError",
                 "PermissionDeniedError",
                 "UnsupportedParamsError",
             )
-            if any(nr in err_name for nr in non_retryable):
+            if any(nr in err_name for nr in non_retryable_names):
                 raise e
 
             if attempt == max_retries - 1:
-                log.error(f"[{agent_name or 'provider'}] LLM call failed after {max_retries} attempts: {e}")
+                log.error(f"[{agent_name or 'provider'}] LLM call failed after {max_retries} attempts: status={status_code} error={e}")
                 raise e
 
             delay = min(60.0, base_delay * (2 ** min(attempt, 4)))
+            status_str = f" [HTTP {status_code}]" if status_code else ""
             log.warning(
-                f"[{agent_name or 'provider'}] LLM call error ({err_name}: {err_msg[:120]}). "
+                f"[{agent_name or 'provider'}] LLM call error{status_str} ({err_name}: {err_msg[:120]}). "
                 f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})..."
             )
             time.sleep(delay)
@@ -95,14 +101,16 @@ class OpenAI:
                 **call_kwargs
             )
 
-        response = call_with_retry(_send, agent_name=self.agent_name)
+        response = retry(_send, agent_name=self.agent_name)
         if not response or not getattr(response, "choices", None):
             resp_dict = getattr(response, "model_dump", None) and response.model_dump() or {}
             inner_resp = resp_dict.get("response") if isinstance(resp_dict, dict) else None
             pf = inner_resp.get("promptFeedback") if isinstance(inner_resp, dict) else None
             if pf and pf.get("blockReason"):
-                return "[!] Block by policy"
-            return "[!] Block by policy" if not getattr(response, "choices", None) else ""
+                log.warning(f"[{self.agent_name}] Prompt blocked by safety policy: {pf.get('blockReason')}")
+                return f"[Model prompt blocked by safety policy ({pf.get('blockReason')}). Please rephrase your query.]"
+            log.warning(f"[{self.agent_name}] Model returned empty choices (possibly blocked by safety filter).")
+            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
 
         # Track usage
         usage = getattr(response, "usage", None)
@@ -134,7 +142,12 @@ class OpenAI:
             content = reasoning
 
         if not content and finish_reason in ("content_filter", "safety"):
-            return "[!] Block by policy"
+            log.warning(f"[{self.agent_name}] Response blocked by safety filter.")
+            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
+
+        if finish_reason == "length":
+            log.warning(f"[{self.agent_name}] Response was truncated due to output token limit.")
+            content += "\n\n[WARNING: Response was truncated due to output token limit. Please output more concisely or split the command.]"
 
         return content
 
@@ -216,7 +229,7 @@ class Anthropic:
             elif isinstance(last_content, list) and len(last_content) > 0 and isinstance(last_content[-1], dict):
                 last_content[-1]["cache_control"] = {"type": "ephemeral"}
 
-        # Send request with exponential backoff retry
+        # Send request
         def _send():
             return self.client.messages.create(
                 model=self.model,
@@ -224,7 +237,7 @@ class Anthropic:
                 **call_kwargs
             )
 
-        response = call_with_retry(_send, agent_name=self.agent_name)
+        response = retry(_send, agent_name=self.agent_name)
 
         # Track usage
         usage = getattr(response, "usage", None)
@@ -245,11 +258,22 @@ class Anthropic:
                 pass
 
         # Extract response
+        stop_reason = getattr(response, "stop_reason", None)
         text_parts = [block.text for block in response.content if hasattr(block, "text")]
-        return "".join(text_parts)
+        content = "".join(text_parts)
+
+        if not content and stop_reason in ("content_filter", "safety"):
+            log.warning(f"[{self.agent_name}] Anthropic response blocked by safety filter.")
+            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
+
+        if stop_reason == "max_tokens":
+            log.warning(f"[{self.agent_name}] Anthropic response was truncated due to output token limit.")
+            content += "\n\n[WARNING: Response was truncated due to output token limit. Please output more concisely or split the command.]"
+
+        return content
 
     def __call__(self, messages, **kwargs):
         return self.chat(messages, **kwargs)
 
 
-__all__ = ["OpenAI", "Anthropic", "config", "call_with_retry"]
+__all__ = ["OpenAI", "Anthropic", "config", "retry"]
