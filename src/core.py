@@ -43,6 +43,18 @@ class Orchestrator:
         log.info(f"{self.container.name} [{self.container.status}]")
         return self.container
 
+    # Run agent with retries
+    def run_agent(self, name, run_fn, validator=None, max_attempts=10, delay=2.0):
+        for attempt in range(max_attempts):
+            res = run_fn()
+            if validator(res) if validator else bool(res):
+                return res
+            if attempt < max_attempts - 1:
+                log.warning(f"{name} no valid result (attempt {attempt + 1}/{max_attempts}), retrying...")
+                time.sleep(delay)
+        print(f"\n\033[1;31m[FATAL] {name} failed after {max_attempts} attempts. Halting program.\033[0m\n", flush=True)
+        sys.exit(1)
+
     # Phase 1
     def phase_prep(self):
         log.info("=== Preprocessing ===")
@@ -75,11 +87,9 @@ class Orchestrator:
             graph_path = f"{self.outputs_container}/call-graph.json"
             flows_path = f"{self.outputs_container}/call-flows.jsonl"
             taint_path = f"{self.outputs_container}/taint-flows.jsonl"
-            retriever_result[0] = agent.run(
-                self.repo_container,
-                graph_path=graph_path,
-                flows_path=flows_path,
-                taint_path=taint_path,
+            retriever_result[0] = self.run_agent(
+                "Repo retriever",
+                lambda: agent.run(self.repo_container, graph_path=graph_path, flows_path=flows_path, taint_path=taint_path),
             )
             log.info(f"Repo retriever finished: {retriever_result[0]}\n")
 
@@ -92,7 +102,10 @@ class Orchestrator:
                 provider_cls=self.provider_cls,
             )
             builder_agent_ref[0] = agent
-            builder_result[0] = agent.run(self.repo_container)
+            builder_result[0] = self.run_agent(
+                "Repo builder",
+                lambda: agent.run(self.repo_container),
+            )
             log.info(f"Repo builder finished: {builder_result[0]}\n")
 
         t_retriever = threading.Thread(target=run_retriever, name="retriever")
@@ -158,13 +171,17 @@ class Orchestrator:
 
             # Run generator
             harness_data = self.state.harness if self.state.harness and self.state.harness.get("found") else None
-            gen_res = gen_agent.run(
-                self.repo_container,
-                hypothesis,
-                pov_script=pov_script,
-                pov_result=result_file,
-                feedback=feedback,
-                harness=harness_data,
+            gen_res = self.run_agent(
+                "PoV Generator",
+                lambda: gen_agent.run(
+                    self.repo_container,
+                    hypothesis,
+                    pov_script=pov_script,
+                    pov_result=result_file,
+                    feedback=feedback,
+                    harness=harness_data,
+                ),
+                validator=lambda r: bool(r or self.state.load_script(flow_id)),
             )
 
             script_code = self.state.load_script(flow_id)
@@ -199,17 +216,16 @@ class Orchestrator:
             )
 
             # Run verifier
-            verdict = ver_agent.run(
-                self.repo_container,
-                hypothesis,
-                pov_script=pov_script,
-                pov_result=res_data,
+            verdict = self.run_agent(
+                "PoV Verifier",
+                lambda: ver_agent.run(
+                    self.repo_container,
+                    hypothesis,
+                    pov_script=pov_script,
+                    pov_result=res_data,
+                ),
+                validator=lambda r: isinstance(r, dict),
             )
-
-            if not verdict or not isinstance(verdict, dict):
-                log.warning("Verifier no verdict")
-                feedback = {"decision": "RETRY", "issues": ["No verdict produced"], "suggestions": ["Re-run test"]}
-                continue
 
             last_verdict = verdict
             decision = verdict.get("decision", "").upper()
@@ -249,11 +265,15 @@ class Orchestrator:
             round_num = self.state.inc_debate()
 
             # Run analyzer
-            analyzer_res = analyzer_agent.run(
-                self.repo_container,
-                taint_flow,
-                hypotheses=hyp_file,
-                feedback=prev_feedback,
+            analyzer_res = self.run_agent(
+                "Analyzer",
+                lambda: analyzer_agent.run(
+                    self.repo_container,
+                    taint_flow,
+                    hypotheses=hyp_file,
+                    feedback=prev_feedback,
+                ),
+                validator=lambda r: isinstance(r, dict) or bool(self.state.load_hypothesis(flow_id)),
             )
 
             candidate = None
@@ -283,16 +303,17 @@ class Orchestrator:
 
             self.state.set_candidate(candidate)
 
-            feedback = coordinator_agent.run(
-                self.repo_container,
-                candidate,
-                taint_flow,
-                analyzer=candidate if round_num > 1 else None,
+            # Run coordinator
+            feedback = self.run_agent(
+                "Coordinator",
+                lambda: coordinator_agent.run(
+                    self.repo_container,
+                    candidate,
+                    taint_flow,
+                    analyzer=candidate if round_num > 1 else None,
+                ),
+                validator=lambda r: isinstance(r, dict),
             )
-
-            if not feedback or not isinstance(feedback, dict):
-                log.warning("Coordinator no feedback")
-                break
 
             decision = feedback.get("decision", "").upper()
             log.info(f"Coordinator: {decision}")

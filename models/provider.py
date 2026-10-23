@@ -7,6 +7,8 @@ from anthropic import Anthropic as _AnthropicClient
 
 log = logging.getLogger("provider")
 
+POLICY_BLOCK_PREFIX = "[!] Blocked by safety policy"
+
 
 def retry(call_fn, agent_name="", max_retries=8, base_delay=4.0):
     for attempt in range(max_retries):
@@ -108,7 +110,7 @@ class OpenAI:
             pf = inner_resp.get("promptFeedback") if isinstance(inner_resp, dict) else None
             reason = pf.get("blockReason") if pf else "safety filter"
             log.warning(f"[{self.agent_name}] Request blocked by safety policy ({reason}).")
-            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
+            return f"{POLICY_BLOCK_PREFIX} ({reason})"
 
         # Track usage
         usage = getattr(response, "usage", None)
@@ -141,7 +143,7 @@ class OpenAI:
 
         if not content and finish_reason in ("content_filter", "safety"):
             log.warning(f"[{self.agent_name}] Response blocked by safety filter.")
-            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
+            return f"{POLICY_BLOCK_PREFIX} (content_filter)"
 
         if finish_reason == "length":
             log.warning(f"[{self.agent_name}] Response was truncated due to output token limit.")
@@ -262,7 +264,7 @@ class Anthropic:
 
         if not content and stop_reason in ("content_filter", "safety"):
             log.warning(f"[{self.agent_name}] Anthropic response blocked by safety filter.")
-            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
+            return f"{POLICY_BLOCK_PREFIX} (content_filter)"
 
         if stop_reason == "max_tokens":
             log.warning(f"[{self.agent_name}] Anthropic response was truncated due to output token limit.")
