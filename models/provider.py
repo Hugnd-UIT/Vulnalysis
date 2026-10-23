@@ -1,7 +1,42 @@
+import logging
 from pathlib import Path
+import time
 import yaml
 from openai import OpenAI as _OpenAIClient
 from anthropic import Anthropic as _AnthropicClient
+
+log = logging.getLogger("provider")
+
+
+def call_with_retry(call_fn, agent_name="", max_retries=8, base_delay=4.0):
+    for attempt in range(max_retries):
+        try:
+            return call_fn()
+        except Exception as e:
+            err_name = type(e).__name__
+            err_msg = str(e)
+
+            # Non-retryable client errors (bad auth, invalid parameters, not found)
+            non_retryable = (
+                "AuthenticationError",
+                "BadRequestError",
+                "NotFoundError",
+                "PermissionDeniedError",
+                "UnsupportedParamsError",
+            )
+            if any(nr in err_name for nr in non_retryable):
+                raise e
+
+            if attempt == max_retries - 1:
+                log.error(f"[{agent_name or 'provider'}] LLM call failed after {max_retries} attempts: {e}")
+                raise e
+
+            delay = min(60.0, base_delay * (2 ** min(attempt, 4)))
+            log.warning(
+                f"[{agent_name or 'provider'}] LLM call error ({err_name}: {err_msg[:120]}). "
+                f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})..."
+            )
+            time.sleep(delay)
 
 
 # Load configuration
@@ -52,12 +87,15 @@ class OpenAI:
             except Exception:
                 pass
 
-        # Send request
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            **call_kwargs
-        )
+        # Send request with exponential backoff retry
+        def _send():
+            return self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                **call_kwargs
+            )
+
+        response = call_with_retry(_send, agent_name=self.agent_name)
         if not response or not getattr(response, "choices", None):
             resp_dict = getattr(response, "model_dump", None) and response.model_dump() or {}
             inner_resp = resp_dict.get("response") if isinstance(resp_dict, dict) else None
@@ -178,12 +216,15 @@ class Anthropic:
             elif isinstance(last_content, list) and len(last_content) > 0 and isinstance(last_content[-1], dict):
                 last_content[-1]["cache_control"] = {"type": "ephemeral"}
 
-        # Send request
-        response = self.client.messages.create(
-            model=self.model,
-            messages=formatted_messages,
-            **call_kwargs
-        )
+        # Send request with exponential backoff retry
+        def _send():
+            return self.client.messages.create(
+                model=self.model,
+                messages=formatted_messages,
+                **call_kwargs
+            )
+
+        response = call_with_retry(_send, agent_name=self.agent_name)
 
         # Track usage
         usage = getattr(response, "usage", None)
@@ -211,4 +252,4 @@ class Anthropic:
         return self.chat(messages, **kwargs)
 
 
-__all__ = ["OpenAI", "Anthropic", "config"]
+__all__ = ["OpenAI", "Anthropic", "config", "call_with_retry"]
