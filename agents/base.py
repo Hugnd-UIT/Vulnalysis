@@ -224,7 +224,7 @@ class BaseAgent:
 
         return thought, action, command
 
-    # Extract json / structured data (YAML-tolerant parser like Revelio)
+    # Extract json
     def extract_json(self, text):
         if not text:
             return None
@@ -247,21 +247,18 @@ class BaseAgent:
                 pass
             return None
 
-        # 1. Search markdown fences: ```json ... ``` or ```finish ... ``` or ```yaml ... ```
         match = re.search(r"```(?:json|finish|yaml)?\s*([\{\[][\s\S]*?[\}\]])\s*```", text, re.DOTALL | re.IGNORECASE)
         if match:
             res = _try_parse(match.group(1))
             if res is not None:
                 return res
 
-        # 2. Search un-fenced outer JSON object
         match = re.search(r"(\{[\s\S]*\})", text)
         if match:
             res = _try_parse(match.group(1))
             if res is not None:
                 return res
 
-        # 3. Search un-fenced outer JSON array
         arr_match = re.search(r"(\[[\s\S]*\])", text)
         if arr_match:
             res = _try_parse(arr_match.group(1))

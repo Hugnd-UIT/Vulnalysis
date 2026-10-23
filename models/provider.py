@@ -93,7 +93,7 @@ class OpenAI:
             except Exception:
                 pass
 
-        # Send request with exponential backoff retry
+        # Send request
         def _send():
             return self.client.chat.completions.create(
                 model=self.model,
@@ -106,11 +106,9 @@ class OpenAI:
             resp_dict = getattr(response, "model_dump", None) and response.model_dump() or {}
             inner_resp = resp_dict.get("response") if isinstance(resp_dict, dict) else None
             pf = inner_resp.get("promptFeedback") if isinstance(inner_resp, dict) else None
-            if pf and pf.get("blockReason"):
-                log.warning(f"[{self.agent_name}] Prompt blocked by safety policy: {pf.get('blockReason')}")
-                return f"[Model prompt blocked by safety policy ({pf.get('blockReason')}). Please rephrase your query.]"
-            log.warning(f"[{self.agent_name}] Model returned empty choices (possibly blocked by safety filter).")
-            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
+            reason = pf.get("blockReason") if pf else "safety filter"
+            log.warning(f"[{self.agent_name}] Request blocked by safety policy ({reason}).")
+            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
 
         # Track usage
         usage = getattr(response, "usage", None)
@@ -143,7 +141,7 @@ class OpenAI:
 
         if not content and finish_reason in ("content_filter", "safety"):
             log.warning(f"[{self.agent_name}] Response blocked by safety filter.")
-            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
+            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
 
         if finish_reason == "length":
             log.warning(f"[{self.agent_name}] Response was truncated due to output token limit.")
@@ -264,7 +262,7 @@ class Anthropic:
 
         if not content and stop_reason in ("content_filter", "safety"):
             log.warning(f"[{self.agent_name}] Anthropic response blocked by safety filter.")
-            return "[Model returned no response - possibly blocked by safety filter. Please try a different approach.]"
+            return "[Blocked by safety policy. Please rephrase or use an alternative approach.]"
 
         if stop_reason == "max_tokens":
             log.warning(f"[{self.agent_name}] Anthropic response was truncated due to output token limit.")
