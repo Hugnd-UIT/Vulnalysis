@@ -96,54 +96,115 @@ class RepoRetrieverAgent(BaseAgent):
         return chunks
 
     def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None):
-        # Reset memory
-        self.memory.clear()
-        self.step = 0
-        self.cmd_history = []
+        taint_flows = taint_path or "/outputs/taint-flows.jsonl"
+        flows_file = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
 
-        files = self.scan(repo_path)
+        content = ""
+        if flows_file.exists():
+            content = flows_file.read_text(encoding="utf-8")
+        elif self.sandbox:
+            code, out = self.execute(f"cat {flows_path or '/outputs/call-flows.jsonl'} 2>/dev/null")
+            if code == 0:
+                content = out
+
+        # Group call flows
+        grouped_flows = {}
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                target = obj.get("dst", {}).get("file") or "unknown"
+                grouped_flows.setdefault(target, []).append(line)
+            except Exception:
+                pass
+
+        if self.sandbox:
+            self.execute(f": > {taint_flows}")
+        else:
+            p = Path(taint_flows)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("", encoding="utf-8")
+
+        if not grouped_flows:
+            import logging
+            logging.getLogger("vulnalysis").warning(f"[{self.name}] No call flows found to analyze.")
+            return taint_flows
+
+        sorted_targets = sorted(
+            grouped_flows.keys(),
+            key=lambda f: (0 if f.startswith("src/") else 1, -len(grouped_flows[f]))
+        )
+
+        files_count = len(self.scan(repo_path))
         graph = self.load_graph(repo_path, graph_path)
         nodes_count = len(graph.get("nodes", []))
         edges_count = len(graph.get("edges", []))
         call_graph_file = graph_path or "/outputs/call-graph.json"
-        call_flows_file = flows_path or "/outputs/call-flows.jsonl"
-        taint_flows = taint_path or "/outputs/taint-flows.jsonl"
+        current_flows_file = "/outputs/current-call-flows.jsonl"
 
-        # Build prompt
-        initial_task = self.render(
-            self.user_prompt,
-            repo=str(repo_path),
-            files=len(files),
-            nodes=nodes_count,
-            edges=edges_count,
-            call_graph=str(call_graph_file),
-            call_flows=str(call_flows_file),
-            taint_flows=str(taint_flows),
-        )
+        import logging
+        logger = logging.getLogger("vulnalysis")
+        total_count = sum(len(v) for v in grouped_flows.values())
+        logger.info(f"[{self.name}] Sliced {total_count} call flows into {len(sorted_targets)} destination targets")
 
-        self.messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": initial_task},
-        ]
+        for idx, target_file in enumerate(sorted_targets, 1):
+            lines = grouped_flows[target_file]
+            logger.info(f"[{self.name}] === Target {idx}/{len(sorted_targets)}: {len(lines)} flows for {target_file} ===")
 
-        def finish(thought, reply):
-            extracted = self.extract_json(reply)
-            code, _ = self.execute(f"test -s {taint_flows}")
-            if code == 0:
+            flows_content = "\n".join(lines)
+            if self.sandbox:
+                self.execute(f"cat << 'EOF' > {current_flows_file}\n{flows_content}\nEOF")
+            else:
+                p = Path(current_flows_file)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(flows_content, encoding="utf-8")
+
+            # Reset memory & steps for this target
+            self.memory.clear()
+            self.step = 0
+            self.cmd_history = []
+
+            initial_task = self.render(
+                self.user_prompt,
+                repo=str(repo_path),
+                files=files_count,
+                nodes=nodes_count,
+                edges=edges_count,
+                call_graph=str(call_graph_file),
+                call_flows=str(current_flows_file),
+                taint_flows=str(taint_flows),
+            )
+
+            self.messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": initial_task},
+            ]
+
+            def finish(thought, reply):
+                extracted = self.extract_json(reply)
+                if extracted:
+                    items = extracted if isinstance(extracted, list) else [extracted]
+                    valid = [
+                        json.dumps(x, ensure_ascii=False)
+                        for x in items
+                        if isinstance(x, dict) and x.get("sink") and x.get("source")
+                    ]
+                    if valid:
+                        lines_to_add = "\n".join(valid)
+                        if self.sandbox:
+                            self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines_to_add}\nEOF")
+                        else:
+                            with open(taint_flows, "a", encoding="utf-8") as tf:
+                                tf.write(lines_to_add + "\n")
                 self.log_action("finish")
-                self.log(thought=thought, action="finish", observation="Repo retriever completed")
-                return True, taint_flows
-            if extracted:
-                items = extracted if isinstance(extracted, list) else [extracted]
-                lines = "\n".join(json.dumps(item) for item in items if isinstance(item, dict))
-                if lines:
-                    self.execute(f"cat << 'EOF' >> {taint_flows}\n{lines}\nEOF")
-                    self.log_action("finish")
-                    self.log(thought=thought, action="finish", observation="Repo retriever completed")
-                    return True, taint_flows
-            return False, None
+                self.log(thought=thought, action="finish", observation=f"Target {idx}/{len(sorted_targets)} completed")
+                return True, True
 
-        return self.loop(finish=finish, default=taint_flows)
+            self.loop(finish=finish, default=True)
+
+        return taint_flows
 
 
 __all__ = ["RepoRetrieverAgent"]
