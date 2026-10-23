@@ -5,7 +5,7 @@ from pathlib import Path
 from src.dedup import score, dedup, rank, combine
 
 
-class PipelineState:
+class State:
     score = staticmethod(score)
     dedup = staticmethod(dedup)
     rank = staticmethod(rank)
@@ -220,4 +220,4 @@ class PipelineState:
         }
 
 
-__all__ = ["PipelineState"]
+__all__ = ["State"]

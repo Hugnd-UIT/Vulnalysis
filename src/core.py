@@ -1,10 +1,15 @@
 import json
 import logging
+import sys
 import time
 import threading
 from pathlib import Path
 
-from src.state import PipelineState
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
+from src.state import State
 from docker.sandbox import init as sandbox_init
 
 from utils.logger import setup_logger
@@ -17,7 +22,7 @@ class Orchestrator:
         self.repo = Path(repo_path).resolve()
         self.outputs_path = Path(outputs_path).resolve()
         self.config_path = config_path
-        self.state = PipelineState(self.outputs_path)
+        self.state = State(self.outputs_path)
 
         # Provider config
         if provider_cls is None:

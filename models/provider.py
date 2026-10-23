@@ -17,7 +17,6 @@ def retry(call_fn, agent_name="", max_retries=8, base_delay=4.0):
             err_msg = str(e)
             status_code = getattr(e, "status_code", None) or getattr(e, "code", None)
 
-            # Explicit non-retryable HTTP client errors (400, 401, 403, 404, 422)
             non_retryable_codes = {400, 401, 403, 404, 422}
             if status_code in non_retryable_codes:
                 raise e
