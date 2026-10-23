@@ -132,7 +132,8 @@ class RepoRetrieverAgent(BaseAgent):
             logging.getLogger("vulnalysis").warning(f"[{self.name}] No call flows found to analyze.")
             return taint_flows
 
-        sorted_targets = sorted(
+        # Sort targets
+        targets = sorted(
             grouped_flows.keys(),
             key=lambda f: (0 if f.startswith("src/") else 1, -len(grouped_flows[f]))
         )
@@ -142,26 +143,26 @@ class RepoRetrieverAgent(BaseAgent):
         nodes_count = len(graph.get("nodes", []))
         edges_count = len(graph.get("edges", []))
         call_graph_file = graph_path or "/outputs/call-graph.json"
-        current_flows_file = "/outputs/call-flows-chunk.jsonl"
+        chunk_path = "/outputs/call-flows-chunk.jsonl"
 
         import logging
-        logger = logging.getLogger("vulnalysis")
+        log = logging.getLogger("vulnalysis")
         total_count = sum(len(v) for v in grouped_flows.values())
-        logger.info(f"[{self.name}] Sliced {total_count} call flows into {len(sorted_targets)} destination targets")
+        log.info(f"[{self.name}] Sliced {total_count} call flows into {len(targets)} targets")
 
-        high_flows = []
-        benign_flows = []
-        high_sinks = set()
+        high = []
+        benign = []
+        seen = set()
 
-        for idx, target_file in enumerate(sorted_targets, 1):
-            lines = grouped_flows[target_file]
-            logger.info(f"[{self.name}] === Target {idx}/{len(sorted_targets)}: {len(lines)} flows for {target_file} ===")
+        for idx, target in enumerate(targets, 1):
+            lines = grouped_flows[target]
+            log.info(f"[{self.name}] === Target {idx}/{len(targets)}: {len(lines)} flows for {target} ===")
 
             flows_content = "\n".join(lines)
             if self.sandbox:
-                self.execute(f"cat << 'EOF' > {current_flows_file}\n{flows_content}\nEOF")
+                self.execute(f"cat << 'EOF' > {chunk_path}\n{flows_content}\nEOF")
             else:
-                p = Path(current_flows_file)
+                p = Path(chunk_path)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(flows_content, encoding="utf-8")
 
@@ -177,7 +178,7 @@ class RepoRetrieverAgent(BaseAgent):
                 nodes=nodes_count,
                 edges=edges_count,
                 call_graph=str(call_graph_file),
-                call_flows=str(current_flows_file),
+                call_flows=str(chunk_path),
                 taint_flows=str(taint_flows),
             )
 
@@ -199,15 +200,15 @@ class RepoRetrieverAgent(BaseAgent):
                             x["verdict"] = "VULNERABLE"
                             target_high.append(x)
                             sk = (str(x["sink"].get("file")), str(x["sink"].get("line")), str(x["sink"].get("function") or x["sink"].get("func")))
-                            high_sinks.add(sk)
+                            seen.add(sk)
                 self.log_action("finish")
-                self.log(thought=thought, action="finish", observation=f"Target {idx}/{len(sorted_targets)} completed")
+                self.log(thought=thought, action="finish", observation=f"Target {idx}/{len(targets)} completed")
                 return True, True
 
             self.loop(finish=finish, default=True)
-            high_flows.extend(target_high)
+            high.extend(target_high)
 
-            # Convert unflagged candidates in this target into benign flows (queued at bottom)
+            # Benign flows
             for line in lines:
                 try:
                     c = json.loads(line)
@@ -216,16 +217,16 @@ class RepoRetrieverAgent(BaseAgent):
                     paths = c.get("paths", [[]])
                     chain = paths[0] if paths and isinstance(paths[0], list) else []
                     dst_func = dst.get("func") or dst.get("function") or (chain[-1].split(":")[-1] if chain else "")
-                    dst_file = dst.get("file") or target_file
+                    dst_file = dst.get("file") or target
                     dst_line = dst.get("line")
 
                     sk = (str(dst_file), str(dst_line), str(dst_func))
-                    if sk in high_sinks:
+                    if sk in seen:
                         continue
 
                     src_func = src.get("func") or src.get("function") or src.get("id") or (chain[0].split(":")[-1] if chain else "")
-                    benign_flows.append({
-                        "id": f"B{len(benign_flows) + 1:04d}",
+                    benign.append({
+                        "id": f"B{len(benign) + 1:04d}",
                         "title": f"Candidate flow to {dst_file}:{dst_line or ''}",
                         "source": {
                             "file": src.get("file"),
@@ -246,16 +247,16 @@ class RepoRetrieverAgent(BaseAgent):
                 except Exception:
                     pass
 
-        # Cleanup chunk file when retriever completely finishes
+        # Cleanup chunk
         if self.sandbox:
-            self.execute(f"rm -f {current_flows_file}")
+            self.execute(f"rm -f {chunk_path}")
         else:
             try:
-                Path(current_flows_file).unlink(missing_ok=True)
+                Path(chunk_path).unlink(missing_ok=True)
             except Exception:
                 pass
 
-        # Read any flows appended directly via bash by LLM during loop
+        # Sync bash flows
         if self.sandbox:
             _, out = self.execute(f"cat {taint_flows} 2>/dev/null")
             for l in (out or "").splitlines():
@@ -265,15 +266,15 @@ class RepoRetrieverAgent(BaseAgent):
                         obj = json.loads(l)
                         if isinstance(obj, dict) and obj.get("sink") and obj.get("source"):
                             sk = (str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("function") or obj["sink"].get("func")))
-                            if sk not in high_sinks:
-                                high_sinks.add(sk)
-                                high_flows.append(obj)
+                            if sk not in seen:
+                                seen.add(sk)
+                                high.append(obj)
                     except Exception:
                         pass
 
-        # Write high-priority/sink flows on TOP, benign flows at BOTTOM
-        ordered_flows = high_flows + benign_flows
-        payload = "\n".join(json.dumps(f, ensure_ascii=False) for f in ordered_flows)
+        # Save flows
+        ordered = high + benign
+        payload = "\n".join(json.dumps(f, ensure_ascii=False) for f in ordered)
         if payload:
             payload += "\n"
 
@@ -284,7 +285,7 @@ class RepoRetrieverAgent(BaseAgent):
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(payload, encoding="utf-8")
 
-        logger.info(f"[{self.name}] Zero-Drop complete: {len(high_flows)} sink flows on TOP, {len(benign_flows)} benign flows at BOTTOM")
+        log.info(f"[{self.name}] Flows saved: {len(high)} sinks, {len(benign)} benign")
         return taint_flows
 
 
