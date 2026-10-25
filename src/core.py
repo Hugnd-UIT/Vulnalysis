@@ -315,8 +315,20 @@ class Orchestrator:
                 validator=lambda r: isinstance(r, dict),
             )
 
-            decision = feedback.get("decision", "").upper()
+            decision = str(feedback.get("decision", "")).strip().upper()
             log.info(f"Coordinator: {decision}")
+
+            # CONFIRMED
+            if decision == "CONFIRMED":
+                self.state.update_status(flow_id, "CONFIRMED")
+                self.state.confirm(feedback)
+                return feedback
+
+            # UNCONFIRMED
+            if decision == "UNCONFIRMED":
+                self.state.update_status(flow_id, "FAILED")
+                self.state.reject(reason=feedback.get("reason", "Coordinator: unconfirmed"))
+                return None
 
             # Coordinator accepts
             if decision == "ACCEPT":
@@ -372,10 +384,11 @@ class Orchestrator:
                 return None
 
             # Coordinator rejects
-            if decision == "REJECT":
+            elif decision == "REJECT":
                 if analyzer_verdict == "BENIGN":
 
-                    # Consensus
+                    # Consensus: not vulnerable
+                    log.info(f"Consensus reached: flow {flow_id} is benign. Moving to next flow.")
                     self.state.update_status(flow_id, "FAILED")
                     self.state.reject(reason=feedback.get("reason", "Consensus: not vulnerable"))
                     return None
@@ -386,7 +399,13 @@ class Orchestrator:
                     continue
 
             # Coordinator revision
-            if decision == "REVISE":
+            elif decision == "REVISE":
+                prev_feedback = feedback
+                continue
+
+            # Fallback
+            else:
+                log.warning(f"Unknown coordinator decision '{decision}'")
                 prev_feedback = feedback
                 continue
 

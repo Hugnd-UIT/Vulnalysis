@@ -335,7 +335,7 @@ class BaseAgent:
                 if reply:
                     if reply.startswith("[!]"):
                         err_text = reply.lstrip("[!]").strip()
-                        self.log_error(f"{err_text} (attempt {attempt + 1}/{max_attempts})")
+                        self.log_error(err_text)
                         if any(k in err_text.lower() for k in ("blocked by", "safety", "policy", "filter")):
                             if self._handle_policy_block(attempt, max_attempts, current_messages):
                                 continue

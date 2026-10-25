@@ -109,7 +109,7 @@ class OpenAI:
             inner_resp = resp_dict.get("response") if isinstance(resp_dict, dict) else None
             pf = inner_resp.get("promptFeedback") if isinstance(inner_resp, dict) else None
             reason = pf.get("blockReason") if pf else "safety filter"
-            log.warning(f"[{self.agent_name}] Request blocked by safety policy ({reason}).")
+            log.warning(f"[{self.agent_name}] Request blocked by safety policy ({reason})")
             return f"{POLICY_BLOCK_PREFIX} ({reason})"
 
         # Track usage

@@ -4,24 +4,24 @@ provider:
 
 agents:
   coordinator:
-    model: ag/gemini-3.8-flash-high
-    input-rate: 0.75
-    output-rate: 3.75
+    model: ag/claude-sonnet-4-6
+    input-rate: 3.0
+    output-rate: 15.0
 
   vuln-analyzer:
-    model: ag/gemini-3.8-flash-high
-    input-rate: 0.75
-    output-rate: 3.75
+    model: ag/claude-sonnet-4-6
+    input-rate: 3.0
+    output-rate: 15.0
 
   pov-generator:
-    model: ag/gemini-3.8-flash-medium
-    input-rate: 0.75
-    output-rate: 3.75
+    model: ag/claude-sonnet-4-6
+    input-rate: 3.0
+    output-rate: 15.0
 
   pov-verifier:
-    model: ag/gemini-3.8-flash-medium
-    input-rate: 0.75
-    output-rate: 3.75
+    model: ag/claude-sonnet-4-6
+    input-rate: 3.0
+    output-rate: 15.0
 
   repo-builder:
     model: ag/gemini-3.8-flash-medium
