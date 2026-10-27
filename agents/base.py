@@ -99,6 +99,15 @@ class BaseAgent:
     # ReAct loop
     def loop(self, finish=None, default=False):
         while not self.is_step_exceeded() and not self.is_cost_exceeded():
+            # Compaction check: maintain sliding window and summarize older steps
+            if hasattr(self, "memory") and hasattr(self.memory, "should_compact"):
+                if self.memory.should_compact(self.messages):
+                    self.messages = self.memory.compact(
+                        self.messages,
+                        llm=self.llm,
+                        log_fn=lambda msg: self.log_thought(f"[Memory] {msg}"),
+                    )
+
             reply = self.call(self.messages)
             if not reply or reply.startswith("[!]"):
                 break
