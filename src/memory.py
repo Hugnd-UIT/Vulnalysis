@@ -1,26 +1,34 @@
 import json
 import logging
+import time
 from pathlib import Path
 
 log = logging.getLogger("vulnalysis")
 
-PROMPT = """You are a memory compaction module for an autonomous security audit agent.
-Summarize the preceding security investigation trajectory into a concise, high-density factual summary (under 250 words).
+PROMPT = """CRITICAL: Respond with TEXT ONLY. Do NOT call any tools or emit markdown bash blocks.
 
-CRITICAL REQUIREMENTS:
-1. PRESERVE exact target file paths, line numbers, function names, and variable names that were identified.
-2. PRESERVE confirmed security facts (e.g., sink location, missing bounds check, vulnerability pattern, CWE).
-3. NOTE dead ends and disproven hypotheses so the agent avoids repeating failed paths.
-4. NOTE the current operational state and immediate next action.
-5. OMIT raw compiler warnings, repetitive grep outputs, and verbose command chatter.
+Your task is to create a detailed summary of the execution trajectory so far, paying close attention to the assigned task and previous actions.
+This summary should capture technical details, code patterns, and decisions essential for continuing execution without losing context.
+
+Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts. In your analysis process:
+1. Chronologically analyze each step: identify the assigned task, actions taken, technical details, files examined or modified, errors encountered, and progress made.
+2. Ensure technical accuracy and keep the summary factual and concise (under 250 words).
+
+Wrap your final summary in <summary> tags with the following sections:
+
+1. Primary Request and Intent: Core objective and assigned task for this agent.
+2. Key Technical Concepts: Important technical details, tools, configurations, or verified findings.
+3. Files and Code Sections: Specific files, functions, scripts, or commands examined, modified, or executed.
+4. Problem Solving: Errors encountered, failed attempts, and how issues were addressed (to avoid repeating mistakes).
+5. Current Work and Next Steps: Exactly what was being worked on right before this summary and the immediate next step.
 
 Previous summary (if any):
 {previous}
 
-Recent trajectory to compact:
+Trajectory to compact:
 {trajectory}
 
-Concise Progress Summary:"""
+Output:"""
 
 
 class Memory:
@@ -88,25 +96,24 @@ class Memory:
         self.summary = ""
         self.cycles = 0
 
-    # Check if messages need compaction
+    # Check if messages need compact
     def check(self, messages):
         if not messages or len(messages) < 4:
             return False
 
-        # If already compacted once, messages[2] holds the previous summary
-        start = 3 if (len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")) else 2
+        start = 3 if (len(messages) > 2 and "<summary>" in messages[2].get("content", "")) else 2
         span = len(messages) - start
-        # Each step consists of an assistant turn and a user turn (2 messages)
+
         steps = span // 2
         return steps >= self.threshold
 
-    # Compact messages into hybrid structure: Prefix + Compacted Summary + Recent Window
+    # Compact messages
     def compact(self, messages, llm=None, log=None):
         if not self.check(messages):
             return messages
 
         tail = self.recent * 2
-        has_summary = len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")
+        has_summary = len(messages) > 2 and "<summary>" in messages[2].get("content", "")
 
         prev = self.summary
         start = 3 if has_summary else 2
@@ -122,31 +129,25 @@ class Memory:
         if not text:
             return messages
 
-        if log:
-            log(f"Compacting {len(middle) // 2} steps into memory summary...")
-
         update = self._summarize(text, prev, llm=llm)
         if update:
             self.summary = update
             self.cycles += 1
 
         content = (
-            f"<trajectory-summary>\n"
-            f"[Compacted Progress Summary - Cycle {self.cycles}]\n"
+            f"<summary>\n"
+            f"[Progress summary - cycle {self.cycles}]\n"
             f"{self.summary}\n"
-            f"</trajectory-summary>\n"
+            f"</summary>\n"
             f"Continue your investigation based on the above progress summary and recent observations below."
         )
 
         item = {"role": "user", "content": content}
         res = [prefix[0], prefix[1], item] + suffix
 
-        if log:
-            log(f"Compaction completed: reduced from {len(messages)} to {len(res)} messages.")
-
         return res
 
-    # Format middle messages into readable text for summarization
+    # Format middle messages
     def _render(self, messages):
         lines = []
         idx = 1
@@ -162,37 +163,33 @@ class Memory:
                 idx += 1
         return "\n".join(lines).strip()
 
-    # Generate summary with LLM or fallback heuristic
-    def _summarize(self, text, prev="", llm=None):
-        if llm and hasattr(llm, "chat"):
+    # Generate summary with LLM
+    def _summarize(self, text, prev="", llm=None, tries=3):
+        if not llm or not hasattr(llm, "chat"):
+            return ""
+
+        body = PROMPT.format(
+            previous=prev if prev else "None (Initial cycle)",
+            trajectory=text,
+        )
+        req = [{"role": "user", "content": body}]
+        for attempt in range(tries):
             try:
-                body = PROMPT.format(
-                    previous=prev if prev else "None (Initial cycle)",
-                    trajectory=text,
-                )
-                req = [{"role": "user", "content": body}]
                 res = llm.chat(req, temperature=0.0)
                 if res and not str(res).startswith("[!]"):
-                    return str(res).strip()
+                    clean = str(res).strip()
+                    if "<summary>" in clean and "</summary>" in clean:
+                        clean = clean.split("<summary>")[1].split("</summary>")[0].strip()
+                    elif "</analysis>" in clean:
+                        clean = clean.split("</analysis>")[1].strip()
+                    return clean
             except Exception as e:
-                log.warning(f"Memory compaction LLM call failed ({e}), falling back to heuristic.")
-
-        # Fallback heuristic summary
-        return self._fallback(text, prev)
-
-    # Heuristic extractive summary when LLM is unavailable
-    def _fallback(self, text, prev=""):
-        lines = []
-        if prev:
-            lines.append(f"Prior Context: {prev[:300]}...")
-
-        for raw in text.splitlines():
-            s = raw.strip()
-            if any(s.upper().startswith(p) for p in ("THOUGHT:", "ACTION:", "```BASH", "FINDINGS:")):
-                lines.append(s)
-
-        out = "\n".join(lines[-15:])
-        return out if out else "Investigation in progress along designated taint flow."
+                if attempt < tries - 1:
+                    delay = 2 * (attempt + 1)
+                    time.sleep(delay)
+                else:
+                    raise e
+        return ""
 
     # Save memory to file
     def save(self, filepath):
