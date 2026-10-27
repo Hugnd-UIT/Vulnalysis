@@ -4,7 +4,7 @@ from pathlib import Path
 
 log = logging.getLogger("vulnalysis")
 
-COMPACTION_PROMPT_TEMPLATE = """You are a memory compaction module for an autonomous security audit agent.
+PROMPT = """You are a memory compaction module for an autonomous security audit agent.
 Summarize the preceding security investigation trajectory into a concise, high-density factual summary (under 250 words).
 
 CRITICAL REQUIREMENTS:
@@ -15,7 +15,7 @@ CRITICAL REQUIREMENTS:
 5. OMIT raw compiler warnings, repetitive grep outputs, and verbose command chatter.
 
 Previous summary (if any):
-{previous_summary}
+{previous}
 
 Recent trajectory to compact:
 {trajectory}
@@ -24,20 +24,20 @@ Concise Progress Summary:"""
 
 
 class Memory:
-    def __init__(self, max_window=10, compact_threshold=8, recent_window=3):
+    def __init__(self, limit=10, threshold=8, recent=3):
         # Initialize storage
         self.steps = []
-        self.max_window = max_window
-        self.compact_threshold = compact_threshold
-        self.recent_window = recent_window
+        self.limit = limit
+        self.threshold = threshold
+        self.recent = recent
         self.summary = ""
-        self.compact_count = 0
+        self.cycles = 0
 
     # Add step
     def add(self, thought="", action=None, command="", observation="", **kwargs):
-        step_number = len(self.steps) + 1
+        step = len(self.steps) + 1
         entry = {
-            "step": step_number,
+            "step": step,
             "thought": thought,
             "action": action,
             "command": command,
@@ -49,8 +49,8 @@ class Memory:
 
     # Get recent window
     def window(self, size=None):
-        limit = size or self.max_window
-        return self.steps[-limit:] if limit > 0 else list(self.steps)
+        n = size or self.limit
+        return self.steps[-n:] if n > 0 else list(self.steps)
 
     # Get last step
     def last(self):
@@ -58,13 +58,13 @@ class Memory:
 
     # Format window for prompt
     def format(self, size=None):
-        recent = self.window(size)
-        if not recent:
+        items = self.window(size)
+        if not items:
             return ""
 
         # Build formatted text
         lines = []
-        for s in recent:
+        for s in items:
             lines.append(f"Step {s['step']}:")
             if s.get("thought"):
                 lines.append(f"THOUGHT: {s['thought']}")
@@ -86,113 +86,113 @@ class Memory:
     def clear(self):
         self.steps.clear()
         self.summary = ""
-        self.compact_count = 0
+        self.cycles = 0
 
     # Check if messages need compaction
-    def should_compact(self, messages):
+    def check(self, messages):
         if not messages or len(messages) < 4:
             return False
 
         # If already compacted once, messages[2] holds the previous summary
-        start_idx = 3 if (len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")) else 2
-        dialogue_len = len(messages) - start_idx
+        start = 3 if (len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")) else 2
+        span = len(messages) - start
         # Each step consists of an assistant turn and a user turn (2 messages)
-        uncompacted_steps = dialogue_len // 2
-        return uncompacted_steps >= self.compact_threshold
+        steps = span // 2
+        return steps >= self.threshold
 
     # Compact messages into hybrid structure: Prefix + Compacted Summary + Recent Window
-    def compact(self, messages, llm=None, log_fn=None):
-        if not self.should_compact(messages):
+    def compact(self, messages, llm=None, log=None):
+        if not self.check(messages):
             return messages
 
-        suffix_len = self.recent_window * 2
-        has_prev_summary = len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")
+        tail = self.recent * 2
+        has_summary = len(messages) > 2 and "<trajectory-summary>" in messages[2].get("content", "")
 
-        prev_summary = self.summary
-        start_idx = 3 if has_prev_summary else 2
+        prev = self.summary
+        start = 3 if has_summary else 2
 
         prefix = messages[:2]  # [system, initial_task]
-        middle = messages[start_idx:-suffix_len]
-        suffix = messages[-suffix_len:]
+        middle = messages[start:-tail]
+        suffix = messages[-tail:]
 
         if not middle:
             return messages
 
-        trajectory_text = self._format_trajectory(middle)
-        if not trajectory_text:
+        text = self._render(middle)
+        if not text:
             return messages
 
-        if log_fn:
-            log_fn(f"Compacting {len(middle) // 2} steps into memory summary...")
+        if log:
+            log(f"Compacting {len(middle) // 2} steps into memory summary...")
 
-        new_summary = self._generate_summary(trajectory_text, prev_summary, llm=llm)
-        if new_summary:
-            self.summary = new_summary
-            self.compact_count += 1
+        update = self._summarize(text, prev, llm=llm)
+        if update:
+            self.summary = update
+            self.cycles += 1
 
-        summary_content = (
+        content = (
             f"<trajectory-summary>\n"
-            f"[Compacted Progress Summary - Cycle {self.compact_count}]\n"
+            f"[Compacted Progress Summary - Cycle {self.cycles}]\n"
             f"{self.summary}\n"
             f"</trajectory-summary>\n"
             f"Continue your investigation based on the above progress summary and recent observations below."
         )
 
-        summary_msg = {"role": "user", "content": summary_content}
-        compacted_messages = [prefix[0], prefix[1], summary_msg] + suffix
+        item = {"role": "user", "content": content}
+        res = [prefix[0], prefix[1], item] + suffix
 
-        if log_fn:
-            log_fn(f"Compaction completed: reduced from {len(messages)} to {len(compacted_messages)} messages.")
+        if log:
+            log(f"Compaction completed: reduced from {len(messages)} to {len(res)} messages.")
 
-        return compacted_messages
+        return res
 
     # Format middle messages into readable text for summarization
-    def _format_trajectory(self, middle_messages):
+    def _render(self, messages):
         lines = []
-        step_idx = 1
-        for msg in middle_messages:
+        idx = 1
+        for msg in messages:
             role = msg.get("role", "")
-            content = str(msg.get("content", "")).strip()
+            body = str(msg.get("content", "")).strip()
             if role == "assistant":
-                lines.append(f"\n[Step {step_idx}] Agent:")
-                lines.append(content[:1500])
+                lines.append(f"\n[Step {idx}] Agent:")
+                lines.append(body[:1500])
             elif role == "user":
-                lines.append(f"[Step {step_idx}] Observation:")
-                lines.append(content[:1500])
-                step_idx += 1
+                lines.append(f"[Step {idx}] Observation:")
+                lines.append(body[:1500])
+                idx += 1
         return "\n".join(lines).strip()
 
     # Generate summary with LLM or fallback heuristic
-    def _generate_summary(self, trajectory_text, prev_summary="", llm=None):
+    def _summarize(self, text, prev="", llm=None):
         if llm and hasattr(llm, "chat"):
             try:
-                prompt_content = COMPACTION_PROMPT_TEMPLATE.format(
-                    previous_summary=prev_summary if prev_summary else "None (Initial cycle)",
-                    trajectory=trajectory_text,
+                body = PROMPT.format(
+                    previous=prev if prev else "None (Initial cycle)",
+                    trajectory=text,
                 )
-                summary_req = [{"role": "user", "content": prompt_content}]
-                res = llm.chat(summary_req, temperature=0.0)
+                req = [{"role": "user", "content": body}]
+                res = llm.chat(req, temperature=0.0)
                 if res and not str(res).startswith("[!]"):
                     return str(res).strip()
             except Exception as e:
                 log.warning(f"Memory compaction LLM call failed ({e}), falling back to heuristic.")
 
         # Fallback heuristic summary
-        return self._heuristic_summary(trajectory_text, prev_summary)
+        return self._fallback(text, prev)
 
     # Heuristic extractive summary when LLM is unavailable
-    def _heuristic_summary(self, trajectory_text, prev_summary=""):
+    def _fallback(self, text, prev=""):
         lines = []
-        if prev_summary:
-            lines.append(f"Prior Context: {prev_summary[:300]}...")
+        if prev:
+            lines.append(f"Prior Context: {prev[:300]}...")
 
-        for raw_line in trajectory_text.splitlines():
-            line = raw_line.strip()
-            if any(line.upper().startswith(p) for p in ("THOUGHT:", "ACTION:", "```BASH", "FINDINGS:")):
-                lines.append(line)
+        for raw in text.splitlines():
+            s = raw.strip()
+            if any(s.upper().startswith(p) for p in ("THOUGHT:", "ACTION:", "```BASH", "FINDINGS:")):
+                lines.append(s)
 
-        extracted = "\n".join(lines[-15:])
-        return extracted if extracted else "Investigation in progress along designated taint flow."
+        out = "\n".join(lines[-15:])
+        return out if out else "Investigation in progress along designated taint flow."
 
     # Save memory to file
     def save(self, filepath):
@@ -200,7 +200,7 @@ class Memory:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "summary": self.summary,
-            "compact_count": self.compact_count,
+            "cycles": self.cycles,
             "steps": self.steps,
         }
         with open(path, "w", encoding="utf-8") as f:
@@ -214,7 +214,7 @@ class Memory:
                 data = json.load(f)
                 if isinstance(data, dict):
                     self.summary = data.get("summary", "")
-                    self.compact_count = data.get("compact_count", 0)
+                    self.cycles = data.get("cycles", 0)
                     self.steps = data.get("steps", [])
                 elif isinstance(data, list):
                     self.steps = data
