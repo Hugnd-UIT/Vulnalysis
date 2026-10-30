@@ -99,6 +99,17 @@ class RepoRetrieverAgent(BaseAgent):
         taint_flows = taint_path or "/outputs/taint-flows.jsonl"
         flows_file = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
 
+        outs = Path("outputs")
+        if flows_path and Path(flows_path).exists():
+            outs = Path(flows_path).parent
+        elif self.sandbox and hasattr(self.sandbox, "attrs"):
+            binds = self.sandbox.attrs.get("HostConfig", {}).get("Binds") or []
+            for b in binds:
+                parts = b.rsplit(":", 2)
+                if len(parts) >= 2 and parts[1] == "/outputs":
+                    outs = Path(parts[0])
+                    break
+
         content = ""
         if flows_file.exists():
             content = flows_file.read_text(encoding="utf-8")
@@ -156,14 +167,22 @@ class RepoRetrieverAgent(BaseAgent):
             flows_content = "\n".join(lines) + "\n"
 
             # Write chunk
-            host_chunk = Path("outputs") / Path(chunk_path).name if str(chunk_path).startswith("/") else Path(chunk_path)
-            host_chunk.parent.mkdir(parents=True, exist_ok=True)
-            host_chunk.write_text(flows_content, encoding="utf-8")
+            chunk = outs / Path(chunk_path).name if str(chunk_path).startswith("/") else Path(chunk_path)
+            chunk.parent.mkdir(parents=True, exist_ok=True)
+            if self.sandbox:
+                self.execute(f"rm -f {chunk_path}")
+            try:
+                chunk.unlink(missing_ok=True)
+            except Exception:
+                pass
+            chunk.write_text(flows_content, encoding="utf-8")
 
             # Reset memory
             self.memory.clear()
             self.step = 0
             self.cmd_history = []
+            if self.sandbox:
+                self.execute(f": > {taint_flows}")
 
             initial_task = self.render(
                 self.user_prompt,
@@ -251,7 +270,7 @@ class RepoRetrieverAgent(BaseAgent):
             self.execute(f"rm -f {chunk_path}")
         else:
             try:
-                Path(chunk_path).unlink(missing_ok=True)
+                (outs / Path(chunk_path).name).unlink(missing_ok=True)
             except Exception:
                 pass
 
@@ -281,9 +300,9 @@ class RepoRetrieverAgent(BaseAgent):
             payload += "\n"
 
         # Save flows
-        host_taint = Path("outputs") / Path(taint_flows).name if str(taint_flows).startswith("/") else Path(taint_flows)
-        host_taint.parent.mkdir(parents=True, exist_ok=True)
-        host_taint.write_text(payload, encoding="utf-8")
+        taint = outs / Path(taint_flows).name if str(taint_flows).startswith("/") else Path(taint_flows)
+        taint.parent.mkdir(parents=True, exist_ok=True)
+        taint.write_text(payload, encoding="utf-8")
 
         log.info(f"[{self.name}] Flows saved: {len(ordered)} combined clusters ({len(high)} sinks, {len(benign)} benign)")
         return taint_flows

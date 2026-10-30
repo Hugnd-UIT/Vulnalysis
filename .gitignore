@@ -3,5 +3,5 @@ __pycache__/
 scratch/
 outputs/
 
-benchmark/
+benchmark/vulngym/repos/
 tmp.txt

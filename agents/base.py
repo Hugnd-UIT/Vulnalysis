@@ -89,10 +89,10 @@ class BaseAgent:
         elif fail_count == 2:
             return False, f"[WARNING: Command '{cmd_norm}' has failed 2 times. You MUST change your approach or fix prerequisites before running it again.]"
 
-        if success_count >= 3:
+        if success_count >= 4:
             return True, f"Command '{cmd_norm}' was executed {success_count} times redundantly"
-        elif success_count == 2:
-            return False, f"[WARNING: You have already executed '{cmd_norm}' successfully. Repeating the exact same command will not yield new information. You MUST refine your query or try a different approach.]"
+        elif success_count >= 2:
+            return False, f"[WARNING: You have already executed '{cmd_norm}' successfully. If the file is long, use different commands (e.g. pagination with sed/tail, grep specific functions, or inspect source code) to read further instead of repeating this exact command.]"
 
         return False, ""
 
@@ -130,6 +130,17 @@ class BaseAgent:
 
             # Execute
             if action == "bash" and command:
+                norm = " ".join(command.strip().split())
+                dups = sum(1 for c, r in self.cmd_history if c == norm and r == 0)
+                if dups >= 5:
+                    self.log_error(f"Stuck: repeated command '{norm}'. Aborting {self.name}.")
+                    break
+                if dups >= 2:
+                    self.cmd_history.append((norm, 0))
+                    hint = f"[COMMAND REJECTED: You already executed '{norm}'. Do not repeat it. If the file is long, change your command: use pagination (sed, tail, head) to read other lines, filter with grep, or inspect Python files directly.]"
+                    self.messages.append({"role": "user", "content": hint})
+                    continue
+
                 self.log_action("bash", command)
                 code, output = self.execute(command)
 
