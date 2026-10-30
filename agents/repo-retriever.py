@@ -19,7 +19,7 @@ class RepoRetrieverAgent(BaseAgent):
     # Scan files
     def scan(self, repo_path):
         if self.sandbox:
-            code, out = self.execute(f"find {repo_path} -type f -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/venv/*'")
+            code, out = self.execute(f"find {repo_path} -type f -not -path '*/.*' -not -path '*/node_modules/*' -not -path '*/venv/*' -not -path '*/tests/*' -not -path '*/test/*' -not -path '*/examples/*' -not -path '*/example/*' -not -path '*/docs/*' -not -path '*/fixtures/*' -not -path '*/mock/*'")
             if code == 0:
                 files = []
                 for line in out.splitlines():
@@ -32,9 +32,9 @@ class RepoRetrieverAgent(BaseAgent):
         target = Path(repo_path).resolve()
         if target.exists():
             files = []
-            ignored = {".git", "__pycache__", "venv", ".venv", "node_modules", "build", "dist"}
+            ignored = {".git", "__pycache__", "venv", ".venv", "node_modules", "build", "dist", "tests", "test", "examples", "example", "docs", "fixtures", "mock"}
             for root, dirs, names in os.walk(target):
-                dirs[:] = [d for d in dirs if d not in ignored]
+                dirs[:] = [d for d in dirs if d.lower() not in ignored]
                 for f in names:
                     rel = Path(root, f).relative_to(target).as_posix()
                     files.append(rel)
@@ -122,8 +122,14 @@ class RepoRetrieverAgent(BaseAgent):
         from src.dedup import filter as filter_flows
         filtered_flows = filter_flows(content.splitlines())
         grouped_flows = {}
+        skip = ("tests/", "test/", "examples/", "example/", "docs/", "fixtures/", "mock/")
         for obj in filtered_flows:
             target = obj.get("dst", {}).get("file") or "unknown"
+            norm = target.replace("\\", "/").lower().lstrip("/")
+            if norm.startswith("./"):
+                norm = norm[2:]
+            if any(norm.startswith(p) or f"/{p}" in norm for p in skip):
+                continue
             grouped_flows.setdefault(target, []).append(json.dumps(obj, ensure_ascii=False))
 
 
