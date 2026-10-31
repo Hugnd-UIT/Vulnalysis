@@ -92,6 +92,38 @@ def score(flow):
     if any(k in ep for k in src_keys) or any(k in var for k in src_keys):
         pts += 3
 
+    modules = (
+        "auth", "security", "oauth", "session", "permission", "credential",
+        "identity", "policy", "access", "guard", "login", "proxy", "token",
+        "crypto", "vault", "privilege", "role", "cert", "secret"
+    )
+    if any(m in sink_file for m in modules):
+        pts += 4
+
+    logic = (
+        "verify", "validate", "check", "authenticate", "authorize", "permit",
+        "grant", "allow", "deny", "issue", "sign", "derive", "generate",
+        "create", "encode", "decode", "redirect", "callback", "bind",
+        "isallowed", "isauthenticated", "isadmin", "haspermission", "can"
+    )
+    if _match_op(op, logic):
+        pts += 4
+
+    params = (
+        "client", "user", "role", "token", "param", "cred", "secret",
+        "key", "state", "scope", "audience", "redirect", "session", "pass",
+        "signature", "claim", "tenant", "principal"
+    )
+    if any(k in ep for k in params) or any(k in var for k in params) or any(k in op for k in params):
+        pts += 3
+
+    inits = (
+        "__init__", "__new__", "constructor", "initialize", "new", "<init>",
+        "getinstance", "build", "setup", "configure"
+    )
+    if any(m in sink_file for m in modules) and any(v in op or v in ep for v in inits):
+        pts += 3
+
     chain_len = len(chain)
     if 0 < chain_len <= 4:
         pts += 2

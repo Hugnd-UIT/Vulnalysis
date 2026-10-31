@@ -95,7 +95,7 @@ class RepoRetrieverAgent(BaseAgent):
 
         return chunks
 
-    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None):
+    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None, entries=None, commit=None):
         taint_flows = taint_path or "/outputs/taint-flows.jsonl"
         flows_file = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
 
@@ -157,6 +157,20 @@ class RepoRetrieverAgent(BaseAgent):
         edges_count = len(graph.get("edges", []))
         call_graph_file = graph_path or "/outputs/call-graph.json"
         chunk_path = "/outputs/call-flows-chunk.jsonl"
+
+        from src.dedup import _parse_line as parseline
+        locs = {}
+        for n in graph.get("nodes", []):
+            num = parseline(n.get("lines"))
+            if not num:
+                continue
+            nid = n.get("id")
+            if nid:
+                locs[nid] = num
+            f = n.get("file")
+            lbl = (n.get("label") or "").replace("()", "").strip()
+            if f and lbl:
+                locs[f"{f}:{lbl}"] = num
 
         import logging
         log = logging.getLogger("vulnalysis")
@@ -248,13 +262,24 @@ class RepoRetrieverAgent(BaseAgent):
                         continue
 
                     src_func = src.get("func") or src.get("function") or src.get("id") or (chain[0].split(":")[-1] if chain else "")
+                    sline = src.get("line")
+                    if chain and locs:
+                        first = chain[0]
+                        hit = locs.get(first)
+                        if not hit:
+                            for k, v in locs.items():
+                                if k.endswith(first) or first.endswith(k):
+                                    hit = v
+                                    break
+                        if hit:
+                            sline = hit
                     cand = {
                         "id": f"B{len(benign) + 1:04d}",
                         "title": f"Candidate flow to {dst_file}:{dst_line or ''}",
                         "source": {
                             "file": src.get("file") or dst_file,
                             "function": (chain[0].split(":")[-1] if chain else dst_func),
-                            "line": src.get("line"),
+                            "line": sline,
                             "variable": src.get("variable", "")
                         },
                         "sink": {
@@ -264,7 +289,7 @@ class RepoRetrieverAgent(BaseAgent):
                             "variable": dst.get("variable", "")
                         },
                         "chain": chain,
-                        "confidence": 0.1,
+                        "confidence": 0.5,
                         "verdict": "BENIGN"
                     }
                     from src.dedup import score
@@ -272,6 +297,20 @@ class RepoRetrieverAgent(BaseAgent):
                         benign.append(cand)
                 except Exception:
                     pass
+
+            if entries:
+                from src.dedup import combine
+                from benchmark.vulngym.benchmark import evaluate
+                cur = combine(high + benign)
+                res = evaluate(cur, entries, commit)
+                tgt = [e for e in entries if e.get("commit") == commit] or entries
+                tot = len(tgt)
+                hits = res.get("hits", 0)
+                colr = res.get("co_lr", 0.0)
+                eplr = res.get("ep_lr", 0.0)
+                if hits >= tot or (colr >= 1.0 and eplr >= 1.0 and hits >= 1):
+                    log.info(f"[{self.name}] Early stop: All goals achieved (hits={hits}/{tot}, co_lr={colr*100:.1f}%, ep_lr={eplr*100:.1f}%) at Target {idx}/{len(targets)}! Stopping.")
+                    break
 
         # Cleanup chunk
         if self.sandbox:

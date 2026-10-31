@@ -29,6 +29,6 @@ agents:
     output-rate: 3.75
 
   repo-retriever:
-    model: ag/gemini-3-flash
+    model: ag/gemini-3.8-flash-medium
     input-rate: 0.75
     output-rate: 3.75

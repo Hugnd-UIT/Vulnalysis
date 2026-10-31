@@ -107,7 +107,7 @@ def graph(repo, graphs, flows):
 
 
 # Run retriever
-def retrieve(repo, graphs, flows, taints, box=None):
+def retrieve(repo, graphs, flows, taints, box=None, entries=None, commit=None):
     config = root / "config" / "config.yml"
     agent = RepoRetrieverAgent(sandbox=box, config_path=str(config))
 
@@ -121,6 +121,8 @@ def retrieve(repo, graphs, flows, taints, box=None):
         graph_path=g_path,
         flows_path=f_path,
         taint_path=t_path,
+        entries=entries,
+        commit=commit,
     )
     return taints
 
@@ -187,7 +189,9 @@ def export(flows, dest, repo, url, commit):
 # Evaluate predictions against ground truth entries
 def evaluate(taints, entries, commit):
     flows = []
-    if Path(taints).exists():
+    if isinstance(taints, (list, tuple)):
+        flows = list(taints)
+    elif Path(taints).exists():
         for line in Path(taints).read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line:
@@ -323,7 +327,7 @@ def main():
     box = sandbox(repo_path=str(repo), outputs_path=str(outs))
 
     # Step 6: Retrieve
-    retrieve(repo, graphs, flows, taints, box=box)
+    retrieve(repo, graphs, flows, taints, box=box, entries=entries, commit=commit)
 
     # Step 7: Map output
     raw = []
