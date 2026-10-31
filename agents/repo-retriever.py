@@ -214,7 +214,9 @@ class RepoRetrieverAgent(BaseAgent):
                     items = extracted if isinstance(extracted, list) else [extracted]
                     for x in items:
                         if isinstance(x, dict) and x.get("sink") and x.get("source"):
-                            if not x.get("confidence"):
+                            try:
+                                x["confidence"] = float(x.get("confidence") or 0.9)
+                            except Exception:
                                 x["confidence"] = 0.9
                             x["verdict"] = "VULNERABLE"
                             if "function" in x["sink"] and "func" not in x["sink"]:
@@ -257,7 +259,7 @@ class RepoRetrieverAgent(BaseAgent):
                         },
                         "sink": {
                             "file": dst_file,
-                            "func": src_func,
+                            "func": dst_func,
                             "line": dst_line,
                             "variable": dst.get("variable", "")
                         },
