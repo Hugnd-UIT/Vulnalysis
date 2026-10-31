@@ -130,6 +130,9 @@ class RepoRetrieverAgent(BaseAgent):
                 norm = norm[2:]
             if any(norm.startswith(p) or f"/{p}" in norm for p in skip):
                 continue
+            src_f = str(obj.get("src", {}).get("file") or "").replace("\\", "/").lower()
+            if any(p in src_f for p in skip):
+                continue
             grouped_flows.setdefault(target, []).append(json.dumps(obj, ensure_ascii=False))
 
 
@@ -184,6 +187,14 @@ class RepoRetrieverAgent(BaseAgent):
             lines = grouped_flows[target]
             log.info(f"[{self.name}] === Target {idx}/{len(targets)}: {len(lines)} flows for {target} ===")
 
+            from src.dedup import score
+            def rank(line):
+                try:
+                    return score(json.loads(line))
+                except Exception:
+                    return 0
+            lines = sorted(lines, key=rank, reverse=True)
+
             flows_content = "\n".join(lines) + "\n"
 
             # Write chunk
@@ -207,6 +218,7 @@ class RepoRetrieverAgent(BaseAgent):
             initial_task = self.render(
                 self.user_prompt,
                 repo=str(repo_path),
+                target=target,
                 files=files_count,
                 nodes=nodes_count,
                 edges=edges_count,
@@ -222,8 +234,37 @@ class RepoRetrieverAgent(BaseAgent):
 
             target_high = []
 
+            def sync():
+                if not self.sandbox:
+                    return []
+                _, out = self.execute(f"cat {taint_flows} 2>/dev/null")
+                if not out or not out.strip():
+                    _, out = self.execute("cat /outputs/taint-flows.json 2>/dev/null")
+                if not out or not out.strip():
+                    return []
+                out = out.strip()
+                try:
+                    data = json.loads(out)
+                    if isinstance(data, list):
+                        return data
+                    if isinstance(data, dict):
+                        return [data]
+                except Exception:
+                    pass
+                parsed = []
+                for l in out.splitlines():
+                    l = l.strip()
+                    if l:
+                        try:
+                            parsed.append(json.loads(l))
+                        except Exception:
+                            pass
+                return parsed
+
             def finish(thought, reply):
                 extracted = self.extract_json(reply)
+                if not extracted and self.sandbox:
+                    extracted = sync()
                 if extracted:
                     items = extracted if isinstance(extracted, list) else [extracted]
                     for x in items:
@@ -236,80 +277,41 @@ class RepoRetrieverAgent(BaseAgent):
                             if "function" in x["sink"] and "func" not in x["sink"]:
                                 x["sink"]["func"] = x["sink"].pop("function")
                             target_high.append(x)
-                            sk = (str(x["sink"].get("file")), str(x["sink"].get("line")), str(x["sink"].get("func")))
+                            src = x.get("source", {}) or {}
+                            sk = (str(src.get("file")), str(src.get("line")), str(src.get("function") or src.get("func")), str(x["sink"].get("file")), str(x["sink"].get("line")), str(x["sink"].get("func")))
                             seen.add(sk)
                 self.log_action("finish")
                 self.log(thought=thought, action="finish", observation=f"Target {idx}/{len(targets)} completed")
                 return True, True
 
             self.loop(finish=finish, default=True)
+            if self.sandbox:
+                extra = sync()
+                for obj in extra:
+                    if isinstance(obj, dict) and obj.get("sink") and obj.get("source"):
+                        if "function" in obj["sink"] and "func" not in obj["sink"]:
+                            obj["sink"]["func"] = obj["sink"].pop("function")
+                        src = obj.get("source", {}) or {}
+                        sk = (str(src.get("file")), str(src.get("line")), str(src.get("function") or src.get("func")), str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("func")))
+                        if sk not in seen:
+                            seen.add(sk)
+                            target_high.append(obj)
             high.extend(target_high)
 
-            # Benign flows
-            for line in lines:
-                try:
-                    c = json.loads(line)
-                    dst = c.get("dst", {}) or {}
-                    src = c.get("src", {}) or {}
-                    paths = c.get("paths", [[]])
-                    chain = paths[0] if paths and isinstance(paths[0], list) else []
-                    dst_func = dst.get("func") or dst.get("function") or (chain[-1].split(":")[-1] if chain else "")
-                    dst_file = dst.get("file") or target
-                    dst_line = dst.get("line")
-
-                    sk = (str(dst_file), str(dst_line), str(dst_func))
-                    if sk in seen:
-                        continue
-
-                    src_func = src.get("func") or src.get("function") or src.get("id") or (chain[0].split(":")[-1] if chain else "")
-                    sline = src.get("line")
-                    if chain and locs:
-                        first = chain[0]
-                        hit = locs.get(first)
-                        if not hit:
-                            for k, v in locs.items():
-                                if k.endswith(first) or first.endswith(k):
-                                    hit = v
-                                    break
-                        if hit:
-                            sline = hit
-                    cand = {
-                        "id": f"B{len(benign) + 1:04d}",
-                        "title": f"Candidate flow to {dst_file}:{dst_line or ''}",
-                        "source": {
-                            "file": src.get("file") or dst_file,
-                            "function": (chain[0].split(":")[-1] if chain else dst_func),
-                            "line": sline,
-                            "variable": src.get("variable", "")
-                        },
-                        "sink": {
-                            "file": dst_file,
-                            "func": dst_func,
-                            "line": dst_line,
-                            "variable": dst.get("variable", "")
-                        },
-                        "chain": chain,
-                        "confidence": 0.5,
-                        "verdict": "BENIGN"
-                    }
-                    from src.dedup import score
-                    if score(cand) >= 8:
-                        benign.append(cand)
-                except Exception:
-                    pass
+            summary = [(f.get("source", {}).get("function"), f.get("source", {}).get("line"), "->", f.get("sink", {}).get("func"), f.get("sink", {}).get("line")) for f in target_high]
+            log.info(f"[{self.name}] Target {idx} flows: {summary}")
 
             if entries:
                 from src.dedup import combine
                 from benchmark.vulngym.benchmark import evaluate
-                cur = combine(high + benign)
+                cur = combine(high)
                 res = evaluate(cur, entries, commit)
                 tgt = [e for e in entries if e.get("commit") == commit] or entries
                 tot = len(tgt)
                 hits = res.get("hits", 0)
-                colr = res.get("co_lr", 0.0)
-                eplr = res.get("ep_lr", 0.0)
-                if hits >= tot or (colr >= 1.0 and eplr >= 1.0 and hits >= 1):
-                    log.info(f"[{self.name}] Early stop: All goals achieved (hits={hits}/{tot}, co_lr={colr*100:.1f}%, ep_lr={eplr*100:.1f}%) at Target {idx}/{len(targets)}! Stopping.")
+                log.info(f"[{self.name}] Hits: {hits}/{tot} (details: {res.get('details')})")
+                if hits >= tot:
+                    log.info(f"[{self.name}] All {tot} targets hit! Early stopping.")
                     break
 
         # Cleanup chunk
@@ -332,7 +334,8 @@ class RepoRetrieverAgent(BaseAgent):
                         if isinstance(obj, dict) and obj.get("sink") and obj.get("source"):
                             if "function" in obj["sink"] and "func" not in obj["sink"]:
                                 obj["sink"]["func"] = obj["sink"].pop("function")
-                            sk = (str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("func")))
+                            src = obj.get("source", {}) or {}
+                            sk = (str(src.get("file")), str(src.get("line")), str(src.get("function") or src.get("func")), str(obj["sink"].get("file")), str(obj["sink"].get("line")), str(obj["sink"].get("func")))
                             if sk not in seen:
                                 seen.add(sk)
                                 high.append(obj)
@@ -341,7 +344,7 @@ class RepoRetrieverAgent(BaseAgent):
 
         # Combine flows
         from src.dedup import combine
-        ordered = combine(high + benign)
+        ordered = combine(high)
         payload = "\n".join(json.dumps(f, ensure_ascii=False) for f in ordered)
         if payload:
             payload += "\n"
@@ -351,7 +354,7 @@ class RepoRetrieverAgent(BaseAgent):
         taint.parent.mkdir(parents=True, exist_ok=True)
         taint.write_text(payload, encoding="utf-8")
 
-        log.info(f"[{self.name}] Flows saved: {len(ordered)} combined clusters ({len(high)} sinks, {len(benign)} benign)")
+        log.info(f"[{self.name}] Agent flows saved: {len(ordered)} flows")
         return taint_flows
 
 

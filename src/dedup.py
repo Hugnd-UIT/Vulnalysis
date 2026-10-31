@@ -11,13 +11,15 @@ def _match_op(op, ops):
 def score(flow):
     if "primary_vector" in flow:
         return flow["primary_vector"].get("score", 0)
-    sink = flow.get("sink", {}) or {}
-    op = str(sink.get("func") or "").lower()
+    sink = flow.get("sink", {}) or flow.get("dst", {}) or {}
+    src = flow.get("source", {}) or flow.get("src", {}) or {}
+    paths = flow.get("paths", [[]])
+    chain = flow.get("chain") or flow.get("flow", {}).get("chain", []) or (paths[0] if paths and isinstance(paths[0], list) else [])
+
+    op = str(sink.get("func") or sink.get("function") or (chain[-1].split(":")[-1] if chain else "")).lower()
     sink_file = str(sink.get("file") or "").lower()
-    src = flow.get("source", {}) or {}
-    ep = str(src.get("func") or "").lower()
+    ep = str((chain[0].split(":")[-1] if chain else "") or src.get("function") or src.get("func") or "").lower()
     var = str(src.get("variable") or "").lower()
-    chain = flow.get("chain") or flow.get("flow", {}).get("chain", []) or []
 
     pts = 2
 
@@ -106,11 +108,11 @@ def score(flow):
         "create", "encode", "decode", "redirect", "callback", "bind",
         "isallowed", "isauthenticated", "isadmin", "haspermission", "can"
     )
-    if _match_op(op, logic):
+    if _match_op(op, logic) or _match_op(ep, logic):
         pts += 4
 
     params = (
-        "client", "user", "role", "token", "param", "cred", "secret",
+        "client", "user", "role", "token", "jwt", "param", "cred", "secret",
         "key", "state", "scope", "audience", "redirect", "session", "pass",
         "signature", "claim", "tenant", "principal"
     )
@@ -122,7 +124,7 @@ def score(flow):
         "getinstance", "build", "setup", "configure"
     )
     if any(m in sink_file for m in modules) and any(v in op or v in ep for v in inits):
-        pts += 3
+        pts += 4
 
     chain_len = len(chain)
     if 0 < chain_len <= 4:
@@ -199,6 +201,8 @@ def combine(flows):
             vector["transforms"] = f.get("transforms")
         if f.get("confidence") is not None:
             vector["confidence"] = f.get("confidence")
+        if f.get("verdict"):
+            vector["verdict"] = f.get("verdict")
 
         if key not in clusters:
             clusters[key] = {

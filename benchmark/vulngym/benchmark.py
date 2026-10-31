@@ -182,29 +182,49 @@ def export(flows, dest, repo, url, commit):
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-    log.info(f"Exported {len(lines)} mapped findings to {dest}")
     return dest
+
+
+# Load and filter agent flows
+def load(src):
+    items = []
+    if isinstance(src, (list, tuple)):
+        items = list(src)
+    elif Path(src).exists():
+        for line in Path(src).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    items.append(json.loads(line))
+                except Exception:
+                    pass
+    clean = []
+    for f in items:
+        if str(f.get("id", "")).startswith("B"):
+            continue
+        clean.append(f)
+        sink = f.get("sink") or {}
+        vecs = f.get("alternative_vectors") or []
+        for av in vecs:
+            if isinstance(av, dict) and av.get("source"):
+                item = dict(f)
+                item["source"] = av.get("source")
+                if "chain" in av:
+                    item["chain"] = av.get("chain")
+                item["id"] = av.get("id") or f.get("id")
+                clean.append(item)
+    return clean
 
 
 # Evaluate predictions against ground truth entries
 def evaluate(taints, entries, commit):
-    flows = []
-    if isinstance(taints, (list, tuple)):
-        flows = list(taints)
-    elif Path(taints).exists():
-        for line in Path(taints).read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                try:
-                    flows.append(json.loads(line))
-                except Exception:
-                    pass
+    flows = load(taints)
 
     target = [e for e in entries if e.get("commit") == commit]
     if not target:
         target = entries
 
-    log.info(f"Evaluating {len(flows)} flows against {len(target)} ground truth entries...")
+    log.info(f"Evaluating {len(flows)} agent flows against {len(target)} ground truth entries...")
 
     hits = 0
     ep_files = 0
@@ -330,18 +350,11 @@ def main():
     retrieve(repo, graphs, flows, taints, box=box, entries=entries, commit=commit)
 
     # Step 7: Map output
-    raw = []
-    if taints.exists():
-        for line in taints.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    raw.append(json.loads(line))
-                except Exception:
-                    pass
+    raw = load(taints)
     export(raw, findings, repo, url, commit)
 
     # Step 8: Evaluate
-    res = evaluate(taints, entries, commit)
+    res = evaluate(raw, entries, commit)
     report.write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print("\n" + "=" * 55)
@@ -351,6 +364,7 @@ def main():
     print(f"Target commit     : {commit}")
     print(f"Directory         : {outs}")
     print(f"Findings          : {findings}")
+    print(f"Agent Flows       : {len(raw)}")
     print(f"Total entries     : {res['total']}")
     print(f"Entries Hit (ER)  : {res['hits']} ({res['er'] * 100:.2f}%)")
     print(f"EP File Recall    : {res['ep_fr'] * 100:.2f}%")

@@ -9,72 +9,73 @@ agent:
 
   user-prompt: |
     ## Rules - STRICT
-    - Use `bash` to explore call flows and trace untrusted paths to sinks.
-    - Use `finish` ONLY when all taint flows have been extracted and recorded.
-    - You MUST strictly adhere to the JSON schema when outputting finish.
+    - Use `bash` to trace untrusted entry points and candidate flows to critical operations.
+    - Verify all source code and line numbers directly on disk; NEVER guess or invent line numbers.
+    - For entry points, obtain exact definition line numbers using `grep -n "def <func>" <file>`.
+    - For critical operations and sinks, locate exact call site line numbers directly in source code.
+    - Real security analysis targets production code (`src/`); automatically ignore tests (`tests/`, `test/`), fixtures, and examples.
+    - Sinks MUST be genuine security-critical operations (credential/token generation or signing, access/authorization decisions, privilege boundaries, or sensitive technical sinks).
+    - For modules defining security authority or access control, trace all primary entry points (initializers configuring authority, request/protocol handlers, exchange endpoints) reaching the module's core security operations.
+    - Treat temporary nonce generation and state/session storage as intermediate transforms; bridge flows directly to the primary security operations.
+    - Write extracted flows to {{taint_flows}} and output `finish` adhering to the JSON schema.
 
     ## Context
     - Target repository: {{repo}}
-    - Files count: {{files}}
-    - Call graph: {{nodes}} functions, {{edges}} call edges. Available at {{call_graph}}.
-    - Call flows: Available at {{call_flows}}.
-    - Taint flows: Available at {{taint_flows}}.
+    - Target file: {{target}}
+    - Call graph: {{nodes}} functions, {{edges}} call edges at {{call_graph}}.
+    - Call flows: Candidate flows at {{call_flows}}.
+    - Taint flows: Output file at {{taint_flows}}.
 
     ## Goal
-    Systematically explore pre-generated call graph and call flows to trace and extract candidate flows from entry points to critical operations or sinks.
-    Verify candidate paths against source code on disk, ensuring comprehensive coverage of both logic and technical vulnerability flows.
-
-    ## Vulnerability Scope
-    Analyze and extract candidate flows across both vulnerability categories:
-    - Logic Vulnerabilities: broken access control, authentication/authorization bypass, improper token/credential issuance, privilege escalation, validation bypass, state confusion, open redirect.
-    - Non-Logic / Technical Vulnerabilities: injections, SSRF, path traversal, deserialization, memory safety.
+    Explore candidate call flows in {{call_flows}} focusing on {{target}} to extract complete flows from entry points to critical operations or sinks within or reaching this file.
+    Cover both vulnerability categories:
+    1. Logic Vulnerabilities: Broken access control, authentication/authorization bypass, improper token/credential issuance, privilege escalation, validation bypass, state confusion, open redirect.
+    2. Technical Vulnerabilities: Injections (command, code, sql, template), SSRF, path traversal, untrusted deserialization, memory safety.
 
     ## Workflow
-    1. Read candidate call flows incrementally from {{call_flows}} using tools like `jq` or `python3`.
-    2. Trace functions along the call chain on disk to bridge unlinked calls, callbacks, or dynamic dispatches.
-    3. Inspect the source entry point (CLI argument, HTTP route handler, RPC/API endpoint, network socket, file input, or exported function) to confirm untrusted input ingestion or unauthenticated request handling.
-    4. Inspect the destination sink or critical operation to confirm security sensitivity:
-       - Logic flaws: authorization checks, authentication/access decisions, token/credential issuance, role/state modification, or redirect handling.
-       - Technical flaws: command execution, database queries, outbound network requests (SSRF), file operations (traversal), deserialization, or memory operations.
-    5. Append each validated taint flow as a single-line JSON object into {{taint_flows}}.
-    6. Repeat for all candidate chains in {{call_flows}}, then output `finish` adhering to schema.
+    1. Read top candidate flows from {{call_flows}} with their call site lines:
+       `python3 -c "import json; [print(f.get('dst',{}).get('line'), f.get('paths',[[None]])[0][0], f.get('src',{}).get('func')) for f in [json.loads(l) for l in open('{{call_flows}}')]]"`
+    2. Inspect {{target}} source code with `grep -n "def <func>"` to get exact entry point lines.
+    3. Verify candidate flows reaching critical operations across both logic and technical vulnerability categories.
+    4. Save identified flows to {{taint_flows}} and call `finish` with the complete JSON array.
 
     ## Scope - STRICT
-    - Focus strictly on tracing paths present in call flows; do not wander into unrelated files.
-    - Base all reasoning and outputs strictly on concrete source code found on disk.
-    - Do not modify target source code; interact strictly through inspection tools in the sandbox.
-    - Emit `finish` ONLY when all candidate call chains in {{call_flows}} have been fully inspected.
+    - Target production code only; exclude test suites, fixtures, and examples.
+    - Base all findings on concrete code and verified line numbers on disk.
+    - Emit `finish` with all identified candidate flows across both logic and technical vulnerability categories.
 
     ## Schema
 
     ```json
-    {
-      "id": "<string: flow id>",
-      "title": "<string: flow title describing the potential logic or technical flaw>",
-      "source": {
-        "file": "<string: file path>",
-        "function": "<string: function name>",
-        "line": "<integer or null: line number>",
-        "variable": "<string: variable name or parameter>"
-      },
-      "transforms": [
-        {
+    [
+      {
+        "id": "<string: flow id>",
+        "title": "<string: flow title>",
+        "source": {
           "file": "<string: file path>",
           "function": "<string: function name>",
-          "line": "<integer or null: line number of propagation or logic check>"
-        }
-      ],
-      "sink": {
-        "file": "<string: file path>",
-        "function": "<string: function name or critical operation>",
-        "line": "<integer or null: line number>",
-        "variable": "<string: variable name or parameter>"
-      },
-      "chain": [
-        "<string: file:function>"
-      ],
-      "confidence": "<float: score between 0.0 and 1.0>"
-    }
+          "line": "<integer: entry point definition line>",
+          "variable": "<string: parameter or variable name>"
+        },
+        "transforms": [
+          {
+            "file": "<string: file path>",
+            "function": "<string: function name>",
+            "line": "<integer: line number>"
+          }
+        ],
+        "sink": {
+          "file": "<string: file path>",
+          "function": "<string: function name or operation>",
+          "line": "<integer: call site line number>",
+          "variable": "<string: argument or variable name>"
+        },
+        "chain": [
+          "<string: file:function>"
+        ],
+        "confidence": "<float: 0.0 to 1.0>"
+      }
+    ]
     ```
 
   react-prompt: |
