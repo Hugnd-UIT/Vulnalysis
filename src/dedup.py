@@ -21,7 +21,10 @@ def score(flow):
 
     pts = 2
 
-    conf = flow.get("confidence") or 0
+    try:
+        conf = float(flow.get("confidence") or 0)
+    except (ValueError, TypeError):
+        conf = 0.0
     fid = str(flow.get("id") or "").lower()
     if conf >= 0.7 or fid.startswith(("tf", "ct")) or flow.get("verdict") == "VULNERABLE":
         pts += 10

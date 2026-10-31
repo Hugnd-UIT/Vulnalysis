@@ -153,7 +153,7 @@ def walk(
             return
 
         valid = False
-        for edge in children[:10]:
+        for edge in children:
             tgt = edge["target"]
 
             if tgt in active:
