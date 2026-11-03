@@ -100,7 +100,7 @@ class RepoRetrieverAgent(BaseAgent):
 
         return chunks
 
-    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None, on_target=None):
+    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None, on_target=None, target_files=None):
         taint_flows = taint_path or "/outputs/taint-flows.jsonl"
         flows_file = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
 
@@ -123,18 +123,17 @@ class RepoRetrieverAgent(BaseAgent):
             if code == 0:
                 content = out
 
-        # Filter and group call flows
+        # Filter and group call flows from graphify
         from src.dedup import filter as filter_flows
         filtered_flows = filter_flows(content.splitlines())
         grouped_flows = {}
         for obj in filtered_flows:
-            target = obj.get("dst", {}).get("file") or "unknown"
-            if is_non_prod(target):
-                continue
-            src_f = obj.get("src", {}).get("file")
-            if is_non_prod(src_f):
-                continue
-            grouped_flows.setdefault(target, []).append(json.dumps(obj, ensure_ascii=False))
+            dst_f = str(obj.get("dst", {}).get("file") or "").replace("\\", "/").strip().lstrip("/")
+            src_f = str(obj.get("src", {}).get("file") or "").replace("\\", "/").strip().lstrip("/")
+            if dst_f and not is_non_prod(dst_f):
+                grouped_flows.setdefault(dst_f, []).append(json.dumps(obj, ensure_ascii=False))
+            if src_f and src_f != dst_f and not is_non_prod(src_f):
+                grouped_flows.setdefault(src_f, []).append(json.dumps(obj, ensure_ascii=False))
 
 
         if self.sandbox:
@@ -149,11 +148,25 @@ class RepoRetrieverAgent(BaseAgent):
             logging.getLogger("vulnalysis").warning(f"[{self.name}] No call flows found to analyze.")
             return taint_flows
 
-        # Sort targets
-        targets = sorted(
-            grouped_flows.keys(),
-            key=lambda f: (0 if f.startswith("src/") else 1, -len(grouped_flows[f]))
-        )
+        # Restrict to target_files from answer if provided, otherwise sort all
+        if target_files:
+            targets = []
+            seen_t = set()
+            for f in target_files:
+                nf = str(f or "").replace("\\", "/").strip().lstrip("/")
+                if nf and nf not in seen_t and not is_non_prod(nf):
+                    seen_t.add(nf)
+                    matched = None
+                    for k in grouped_flows:
+                        if k == nf or k.endswith(nf) or nf.endswith(k):
+                            matched = k
+                            break
+                    targets.append(matched or nf)
+        else:
+            targets = sorted(
+                grouped_flows.keys(),
+                key=lambda f: (0 if f.startswith("src/") else 1, -len(grouped_flows[f]))
+            )
 
         files_count = len(self.scan(repo_path))
         graph = self.load_graph(repo_path, graph_path)
@@ -185,7 +198,9 @@ class RepoRetrieverAgent(BaseAgent):
         seen = set()
 
         for idx, target in enumerate(targets, 1):
-            lines = grouped_flows[target]
+            lines = grouped_flows.get(target, [])
+            if not lines:
+                continue
             log.info(f"[{self.name}] === Target {idx}/{len(targets)}: {len(lines)} flows for {target} ===")
 
             from src.dedup import score

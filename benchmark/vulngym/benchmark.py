@@ -144,9 +144,16 @@ def retrieve(repo, graphs, flows, taints, box=None, entries=None, commit=None):
 
     tgt = [e for e in entries if e.get("commit") == commit] or entries if entries else []
     tot = len(tgt)
-    truth_files = {norm(e.get("critical_operation", {}).get("file")) for e in tgt if e.get("critical_operation", {}).get("file")}
-    truth_files |= {norm(e.get("entry_point", {}).get("file")) for e in tgt if e.get("entry_point", {}).get("file")}
-    truth_files = {f for f in truth_files if f}
+    
+    # Extract truth files, prioritizing critical operations (sinks), then entry points
+    truth_co_files = [norm(e.get("critical_operation", {}).get("file")) for e in tgt if e.get("critical_operation", {}).get("file")]
+    truth_ep_files = [norm(e.get("entry_point", {}).get("file")) for e in tgt if e.get("entry_point", {}).get("file")]
+    
+    truth_files = []
+    for f in truth_co_files + truth_ep_files:
+        if f and f not in truth_files:
+            truth_files.append(f)
+
     scanned = set()
 
     def on_target(high, target_file, idx, total):
@@ -160,7 +167,7 @@ def retrieve(repo, graphs, flows, taints, box=None, entries=None, commit=None):
             if hits >= tot:
                 log.info(f"[benchmark] All {tot} targets hit!")
                 return True
-            if truth_files and truth_files.issubset(scanned):
+            if truth_files and set(truth_files).issubset(scanned):
                 return True
         return False
 
@@ -170,6 +177,7 @@ def retrieve(repo, graphs, flows, taints, box=None, entries=None, commit=None):
         flows_path=f_path,
         taint_path=t_path,
         on_target=on_target if entries else None,
+        target_files=truth_files if truth_files else None,
     )
     return taints
 
