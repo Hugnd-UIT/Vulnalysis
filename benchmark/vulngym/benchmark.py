@@ -81,10 +81,36 @@ def match(sf, sl, rf, rl, delta=DELTA):
 # Clone repo
 def clone(url, dest):
     dest = Path(dest)
-    if not dest.exists():
+    if not dest.exists() or not (dest / ".git").exists():
+        import shutil
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
         log.info(f"Cloning {url} to {dest}...")
-        subprocess.run(["git", "clone", url, str(dest)], check=True)
+        subprocess.run(["git", "clone", "--filter=blob:none", url, str(dest)], check=True)
     return dest
+
+
+# Clean up intermediate files after repo finishes
+def cleanup_outputs(outs, box=None):
+    outs = Path(outs)
+    targets = [
+        "call-graph.json",
+        "call-flows.jsonl",
+        "taint-flows.jsonl",
+        "call-flows-chunk.jsonl",
+    ]
+    for name in targets:
+        p = outs / name
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:
+            pass
+    if box:
+        try:
+            box.exec_run("rm -f /outputs/call-graph.json /outputs/call-flows.jsonl /outputs/call-flows-chunk*.jsonl /outputs/taint-flows.jsonl /outputs/generate_flows.py")
+        except Exception:
+            pass
+    log.info(f"Cleaned up intermediate graph and flow files in {outs}")
 
 
 # Checkout commit
@@ -116,13 +142,34 @@ def retrieve(repo, graphs, flows, taints, box=None, entries=None, commit=None):
     f_path = "/outputs/call-flows.jsonl" if hasattr(box, "attrs") else str(flows)
     t_path = "/outputs/taint-flows.jsonl" if hasattr(box, "attrs") else str(taints)
 
+    tgt = [e for e in entries if e.get("commit") == commit] or entries if entries else []
+    tot = len(tgt)
+    truth_files = {norm(e.get("critical_operation", {}).get("file")) for e in tgt if e.get("critical_operation", {}).get("file")}
+    truth_files |= {norm(e.get("entry_point", {}).get("file")) for e in tgt if e.get("entry_point", {}).get("file")}
+    truth_files = {f for f in truth_files if f}
+    scanned = set()
+
+    def on_target(high, target_file, idx, total):
+        scanned.add(norm(target_file))
+        if tgt:
+            from src.dedup import combine
+            cur = combine(high)
+            res = evaluate(cur, tgt, commit)
+            hits = res.get("hits", 0)
+            log.info(f"[benchmark] Target {idx}/{total} ({target_file}) - Hits: {hits}/{tot} details: {res.get('details')}")
+            if hits >= tot:
+                log.info(f"[benchmark] All {tot} targets hit!")
+                return True
+            if truth_files and truth_files.issubset(scanned):
+                return True
+        return False
+
     agent.run(
         target,
         graph_path=g_path,
         flows_path=f_path,
         taint_path=t_path,
-        entries=entries,
-        commit=commit,
+        on_target=on_target if entries else None,
     )
     return taints
 
@@ -307,6 +354,86 @@ def evaluate(taints, entries, commit):
     return summary
 
 
+# State and Report paths
+STATE_FILE = root / "benchmark" / "vulngym" / "benchmark_results.jsonl"
+REPORT_MD = root / "benchmark" / "vulngym" / "reports.md"
+
+
+def load_completed_state():
+    completed = {}
+    if STATE_FILE.exists():
+        for line in STATE_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    rec = json.loads(line)
+                    key = (rec.get("url"), rec.get("commit"))
+                    completed[key] = rec
+                except Exception:
+                    pass
+    return completed
+
+
+def save_report(record):
+    with open(STATE_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    render_markdown_report()
+
+
+def render_markdown_report():
+    completed = load_completed_state()
+    if not completed:
+        return
+
+    records = list(completed.values())
+    total_entries = sum(r.get("total", 0) for r in records)
+    total_hits = sum(r.get("hits", 0) for r in records)
+    mean_er = (total_hits / total_entries * 100) if total_entries else 0.0
+
+    mean_ep_fr = (sum(r.get("ep_fr", 0.0) * r.get("total", 0) for r in records) / total_entries * 100) if total_entries else 0.0
+    mean_ep_lr = (sum(r.get("ep_lr", 0.0) * r.get("total", 0) for r in records) / total_entries * 100) if total_entries else 0.0
+    mean_co_fr = (sum(r.get("co_fr", 0.0) * r.get("total", 0) for r in records) / total_entries * 100) if total_entries else 0.0
+    mean_co_lr = (sum(r.get("co_lr", 0.0) * r.get("total", 0) for r in records) / total_entries * 100) if total_entries else 0.0
+
+    import datetime
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    lines = [
+        "# VulnGym Benchmark Report",
+        "",
+        f"- **Last updated:** `{now_str}`",
+        f"- **Completed targets:** {len(records)}",
+        f"- **Total Ground Truth Entries:** {total_entries}",
+        f"- **Exact Recall (ER / Hits):** {total_hits}/{total_entries} (**{mean_er:.2f}%**)",
+        f"- **Entry Point File Recall (EP_FR):** {mean_ep_fr:.2f}%",
+        f"- **Entry Point Line Recall (EP_LR):** {mean_ep_lr:.2f}%",
+        f"- **Critical Operation File Recall (CO_FR):** {mean_co_fr:.2f}%",
+        f"- **Critical Operation Line Recall (CO_LR):** {mean_co_lr:.2f}%",
+        "",
+        "## Evaluated Targets",
+        "",
+        "| # | Project | Commit | Flows | Entries | Hits | ER | EP_FR | EP_LR | CO_FR | CO_LR | Status |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+
+    for idx, r in enumerate(records, 1):
+        tot = r.get("total", 0)
+        h = r.get("hits", 0)
+        status = "PASSED" if h == tot and tot > 0 else "PARTIAL" if h > 0 else "MISSED"
+        c_short = str(r.get("commit", ""))[:8]
+        proj = str(r.get("project", "unknown"))
+        fl = r.get("flows", 0)
+        er = float(r.get("er", 0.0)) * 100
+        ep_fr = float(r.get("ep_fr", 0.0)) * 100
+        ep_lr = float(r.get("ep_lr", 0.0)) * 100
+        co_fr = float(r.get("co_fr", 0.0)) * 100
+        co_lr = float(r.get("co_lr", 0.0)) * 100
+        lines.append(f"| {idx} | {proj} | `{c_short}` | {fl} | {tot} | {h} | {er:.1f}% | {ep_fr:.1f}% | {ep_lr:.1f}% | {co_fr:.1f}% | {co_lr:.1f}% | {status} |")
+
+    lines.append("")
+    REPORT_MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main():
     bench = Path(__file__).resolve().parent
     meta = bench / "entries.jsonl"
@@ -318,60 +445,114 @@ def main():
         json.loads(l) for l in meta.read_text(encoding="utf-8").splitlines() if l.strip()
     ]
 
-    # Target repository
-    url = "https://github.com/jlowin/fastmcp"
-    repo = bench / "repos" / "fastmcp"
-    commit = "6bade1cbd973cbbbca26a84ed7c4cc58ecfda5b3"
+    # Optional filter from sys.argv (e.g. `python benchmark.py fastmcp` or `python benchmark.py`)
+    filter_arg = sys.argv[1].strip() if len(sys.argv) > 1 else None
 
-    # Step 1: Clone
-    clone(url, repo)
+    # Group entries by (repo_url, commit)
+    from collections import OrderedDict
+    targets = OrderedDict()
+    for e in entries:
+        u = e.get("repo_url")
+        c = e.get("commit")
+        p = e.get("project") or (u.rstrip("/").split("/")[-1] if u else "unknown")
+        if u and c:
+            if filter_arg and filter_arg.lower() not in p.lower() and filter_arg.lower() not in u.lower():
+                continue
+            targets.setdefault((u, c, p), []).append(e)
 
-    # Step 2: Checkout commit
-    checkout(repo, commit)
+    # Resume state: load already completed (url, commit)
+    completed_state = load_completed_state()
 
-    # Step 3: Setup output dir INSIDE target repo
-    outs = repo / "outputs"
-    outs.mkdir(parents=True, exist_ok=True)
-    graphs = outs / "call-graph.json"
-    flows = outs / "call-flows.jsonl"
-    taints = outs / "taint-flows.jsonl"
-    findings = outs / "findings.jsonl"
-    report = outs / "eval.json"
+    for idx, ((url, commit, project), tgt_entries) in enumerate(targets.items(), 1):
+        if (url, commit) in completed_state:
+            log.info(f"[{idx}/{len(targets)}] Skipping {project} @ {commit[:8]}")
+            continue
 
-    # Step 4: Graphify
-    if not graphs.exists() or not flows.exists():
-        graph(repo, graphs, flows)
+        log.info(f"[{idx}/{len(targets)}] Running {project} @ {commit[:8]}\n")
 
-    # Step 5: Sandbox
-    from docker.sandbox import init as sandbox
-    box = sandbox(repo_path=str(repo), outputs_path=str(outs))
+        repo_name = url.rstrip("/").split("/")[-1]
+        repo_dir = bench / "repos" / repo_name
+        outs = repo_dir / "outputs"
+        box = None
 
-    # Step 6: Retrieve
-    retrieve(repo, graphs, flows, taints, box=box, entries=entries, commit=commit)
+        try:
+            # Step 1: Clone on demand
+            clone(url, repo_dir)
 
-    # Step 7: Map output
-    raw = load(taints)
-    export(raw, findings, repo, url, commit)
+            # Step 2: Checkout commit
+            checkout(repo_dir, commit)
 
-    # Step 8: Evaluate
-    res = evaluate(raw, entries, commit)
-    report.write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
+            # Step 3: Setup output dir INSIDE target repo
+            outs = repo_dir / "outputs"
+            outs.mkdir(parents=True, exist_ok=True)
+            graphs = outs / "call-graph.json"
+            flows = outs / "call-flows.jsonl"
+            taints = outs / "taint-flows.jsonl"
+            findings = outs / "findings.jsonl"
+            report = outs / "eval.json"
 
-    print("\n" + "=" * 55)
-    print("        VULNGYM BENCHMARK")
-    print("=" * 55)
-    print(f"Target repo       : fastmcp")
-    print(f"Target commit     : {commit}")
-    print(f"Directory         : {outs}")
-    print(f"Findings          : {findings}")
-    print(f"Agent Flows       : {len(raw)}")
-    print(f"Total entries     : {res['total']}")
-    print(f"Entries Hit (ER)  : {res['hits']} ({res['er'] * 100:.2f}%)")
-    print(f"EP File Recall    : {res['ep_fr'] * 100:.2f}%")
-    print(f"EP Line Recall    : {res['ep_lr'] * 100:.2f}%")
-    print(f"CO File Recall    : {res['co_fr'] * 100:.2f}%")
-    print(f"CO Line Recall    : {res['co_lr'] * 100:.2f}%")
-    print("=" * 55)
+            # Step 4: Graphify
+            if not graphs.exists() or not flows.exists():
+                graph(repo_dir, graphs, flows)
+
+            # Step 5: Sandbox
+            from docker.sandbox import init as sandbox
+            box = sandbox(repo_path=str(repo_dir), outputs_path=str(outs))
+
+            # Step 6: Retrieve
+            retrieve(repo_dir, graphs, flows, taints, box=box, entries=tgt_entries, commit=commit)
+
+            # Step 7: Map output
+            raw = load(taints)
+            export(raw, findings, repo_dir, url, commit)
+
+            # Step 8: Evaluate
+            res = evaluate(raw, tgt_entries, commit)
+            report.write_text(json.dumps(res, indent=2, ensure_ascii=False), encoding="utf-8")
+
+            # Step 9: Save report & render markdown continuously
+            import datetime
+            rec = {
+                "project": project,
+                "url": url,
+                "commit": commit,
+                "flows": len(raw),
+                "total": res.get("total", len(tgt_entries)),
+                "hits": res.get("hits", 0),
+                "er": res.get("er", 0.0),
+                "ep_fr": res.get("ep_fr", 0.0),
+                "ep_lr": res.get("ep_lr", 0.0),
+                "co_fr": res.get("co_fr", 0.0),
+                "co_lr": res.get("co_lr", 0.0),
+                "timestamp": datetime.datetime.now().isoformat(),
+            }
+            save_report(rec)
+            completed_state[(url, commit)] = rec
+
+            print("\n" + "=" * 55)
+            print("        VULNGYM BENCHMARK")
+            print("=" * 55)
+            print(f"Target repo       : {project}")
+            print(f"Target commit     : {commit[:8]}")
+            print(f"Directory         : {outs}")
+            print(f"Findings          : {findings}")
+            print(f"Agent Flows       : {len(raw)}")
+            print(f"Total entries     : {res['total']}")
+            print(f"Entries Hit (ER)  : {res['hits']} ({res['er'] * 100:.2f}%)")
+            print(f"EP File Recall    : {res['ep_fr'] * 100:.2f}%")
+            print(f"EP Line Recall    : {res['ep_lr'] * 100:.2f}%")
+            print(f"CO File Recall    : {res['co_fr'] * 100:.2f}%")
+            print(f"CO Line Recall    : {res['co_lr'] * 100:.2f}%")
+            print(f"Report saved to   : {REPORT_MD}")
+            print("=" * 55)
+
+        except Exception as e:
+            log.error(f"Error benchmarking {project} @ {commit[:8]}: {e}")
+            continue
+        finally:
+            cleanup_outputs(outs, box)
+
+    print(f"\nAll benchmark targets processed! Check {REPORT_MD} for complete report.")
 
 
 if __name__ == "__main__":

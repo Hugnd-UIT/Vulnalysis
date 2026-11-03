@@ -553,7 +553,7 @@ def isbuildoutput(path: Path, package_dir: Path) -> bool:
 
 def workspaceimport(raw: str, start_dir: Path) -> Path | None:
     packages = loadpackages(start_dir)
-    platform = platform(start_dir)
+    target_platform = platform(start_dir)
 
     for package_name, package_dir in packages.items():
         if raw == package_name:
@@ -565,7 +565,7 @@ def workspaceimport(raw: str, start_dir: Path) -> Path | None:
 
         build_fallback: Path | None = None
 
-        for candidate in entrycandidates(package_dir, subpath, platform):
+        for candidate in entrycandidates(package_dir, subpath, target_platform):
             resolved = jspath(candidate)
 
             if resolved.is_file():

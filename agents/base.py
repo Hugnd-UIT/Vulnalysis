@@ -37,6 +37,7 @@ class BaseAgent:
         self.temperature = float(model_cfg.get("temperature", 0.0))
 
         self.cmd_history = []
+        self._start_cost = tracker.tracker.get_agent_stats(self.name).get("cost", 0.0)
 
         # Initialize provider
         self.llm = provider_cls(agent_name=self.name, config_path=config_path)
@@ -68,7 +69,11 @@ class BaseAgent:
         return self.step >= self.step_limit
 
     def is_cost_exceeded(self):
-        return tracker.tracker.is_exceeded(self.name, self.cost_limit)
+        if not self.cost_limit or self.cost_limit <= 0:
+            return False
+        cur = tracker.tracker.get_agent_stats(self.name).get("cost", 0.0)
+        start = getattr(self, "_start_cost", 0.0)
+        return (cur - start) >= self.cost_limit
         
     def check_exceeded(self, warn_at=None):
         threshold = warn_at if warn_at is not None else self.warn_at

@@ -4750,10 +4750,10 @@ def extractor(path: Path) -> Any | None:
 
     if suffix == '.h':
         if isobjcheader(path):
-            return extract_objc
+            return objc.extract
 
         if iscppheader(path):
-            return cpp
+            return cpp.extract
 
     if suffix == '.m' and (not isobjcsource(path)):
         return None

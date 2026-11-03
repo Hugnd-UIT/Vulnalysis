@@ -1,8 +1,11 @@
 import json
 import os
+import re
 from pathlib import Path
 from agents.base import BaseAgent
 from models.provider import OpenAI
+from models import tracker
+from utils.skip import is_non_prod
 
 
 class RepoRetrieverAgent(BaseAgent):
@@ -26,18 +29,20 @@ class RepoRetrieverAgent(BaseAgent):
                     clean = line.strip()
                     if clean:
                         rel = clean[len(repo_path):].lstrip("/")
-                        files.append(rel)
+                        if not is_non_prod(rel):
+                            files.append(rel)
                 return sorted(files)
 
         target = Path(repo_path).resolve()
         if target.exists():
             files = []
-            ignored = {".git", "__pycache__", "venv", ".venv", "node_modules", "build", "dist", "tests", "test", "examples", "example", "docs", "fixtures", "mock"}
+            ignored = {".git", "__pycache__", "venv", ".venv", "node_modules", "build", "dist"}
             for root, dirs, names in os.walk(target):
-                dirs[:] = [d for d in dirs if d.lower() not in ignored]
+                dirs[:] = [d for d in dirs if d.lower() not in ignored and not is_non_prod(d)]
                 for f in names:
                     rel = Path(root, f).relative_to(target).as_posix()
-                    files.append(rel)
+                    if not is_non_prod(rel):
+                        files.append(rel)
             return sorted(files)
 
         return []
@@ -95,7 +100,7 @@ class RepoRetrieverAgent(BaseAgent):
 
         return chunks
 
-    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None, entries=None, commit=None):
+    def run(self, repo_path, graph_path=None, flows_path=None, taint_path=None, on_target=None):
         taint_flows = taint_path or "/outputs/taint-flows.jsonl"
         flows_file = Path(flows_path) if flows_path and Path(flows_path).exists() else Path("outputs/call-flows.jsonl")
 
@@ -122,16 +127,12 @@ class RepoRetrieverAgent(BaseAgent):
         from src.dedup import filter as filter_flows
         filtered_flows = filter_flows(content.splitlines())
         grouped_flows = {}
-        skip = ("tests/", "test/", "examples/", "example/", "docs/", "fixtures/", "mock/")
         for obj in filtered_flows:
             target = obj.get("dst", {}).get("file") or "unknown"
-            norm = target.replace("\\", "/").lower().lstrip("/")
-            if norm.startswith("./"):
-                norm = norm[2:]
-            if any(norm.startswith(p) or f"/{p}" in norm for p in skip):
+            if is_non_prod(target):
                 continue
-            src_f = str(obj.get("src", {}).get("file") or "").replace("\\", "/").lower()
-            if any(p in src_f for p in skip):
+            src_f = obj.get("src", {}).get("file")
+            if is_non_prod(src_f):
                 continue
             grouped_flows.setdefault(target, []).append(json.dumps(obj, ensure_ascii=False))
 
@@ -212,6 +213,7 @@ class RepoRetrieverAgent(BaseAgent):
             self.memory.clear()
             self.step = 0
             self.cmd_history = []
+            self._start_cost = tracker.tracker.get_agent_stats(self.name).get("cost", 0.0)
             if self.sandbox:
                 self.execute(f": > {taint_flows}")
 
@@ -301,18 +303,12 @@ class RepoRetrieverAgent(BaseAgent):
             summary = [(f.get("source", {}).get("function"), f.get("source", {}).get("line"), "->", f.get("sink", {}).get("func"), f.get("sink", {}).get("line")) for f in target_high]
             log.info(f"[{self.name}] Target {idx} flows: {summary}")
 
-            if entries:
-                from src.dedup import combine
-                from benchmark.vulngym.benchmark import evaluate
-                cur = combine(high)
-                res = evaluate(cur, entries, commit)
-                tgt = [e for e in entries if e.get("commit") == commit] or entries
-                tot = len(tgt)
-                hits = res.get("hits", 0)
-                log.info(f"[{self.name}] Hits: {hits}/{tot} (details: {res.get('details')})")
-                if hits >= tot:
-                    log.info(f"[{self.name}] All {tot} targets hit! Early stopping.")
-                    break
+            if on_target:
+                try:
+                    if on_target(high, target, idx, len(targets)):
+                        break
+                except Exception as e:
+                    log.warning(f"[{self.name}] on target callback error: {e}")
 
         # Cleanup chunk
         if self.sandbox:
